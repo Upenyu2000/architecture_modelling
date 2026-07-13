@@ -7,7 +7,6 @@ import sys
 from pathlib import Path
 
 import bpy
-from mathutils import Vector
 
 
 BASE_PATH = Path(__file__).with_name("generate_scene.py")
@@ -16,6 +15,23 @@ if SPEC is None or SPEC.loader is None:
     raise RuntimeError(f"Unable to load Blender scene helpers from {BASE_PATH}")
 base = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(base)
+
+
+WINDOW_TYPES = {
+    "window", "fixed_window", "casement_window", "double_casement_window", "glider_window",
+    "garden_window", "bay_window", "bow_window", "double_hung_window",
+    "vertical_sliding_window", "horizontal_sliding_window",
+}
+SLIDING_TYPES = {
+    "pocket_door", "double_pocket_door", "bypass_door", "sliding_door",
+    "double_sliding_door", "sliding_glass_door",
+}
+DOUBLE_TYPES = {"double_door", "double_bifold_door", "double_pocket_door", "double_sliding_door", "bypass_door"}
+FOLDING_TYPES = {"bifold_door", "double_bifold_door", "folding_door"}
+
+
+def is_window(opening_type: str) -> bool:
+    return opening_type in WINDOW_TYPES
 
 
 def projected_openings(wall: dict, openings: list[dict]) -> list[dict]:
@@ -86,11 +102,11 @@ def add_cut_wall(wall: dict, openings: list[dict], exterior_mat, interior_mat, v
 
     for item in projected:
         opening = item["opening"]
-        opening_type = opening.get("opening_type", "door")
+        opening_type = str(opening.get("opening_type", "door"))
         if opening_type == "open_passage":
             continue
-        if opening_type == "window":
-            sill = min(0.9, visible_height)
+        if is_window(opening_type):
+            sill = min(float(opening.get("sill_height", 0.9)), visible_height)
             opening_top = min(sill + float(opening.get("height", 1.25)), visible_height)
             add_wall_piece(wall, item["start"], item["end"], 0.0, sill, mat)
             if visible_height > opening_top:
@@ -143,37 +159,103 @@ def pbr_texture_material(name: str, spec: dict, image_path: str | None, normal_p
     return mat
 
 
+def _door_angle(opening: dict) -> float:
+    if not bool(opening.get("default_open", False)):
+        return 0.0
+    direction = -1.0 if opening.get("swing_direction") == "counterclockwise" else 1.0
+    return direction * math.radians(float(opening.get("swing_angle_deg", 90.0)))
+
+
+def _add_hinged_leaf(name: str, x: float, z: float, width: float, height: float, rotation: float, angle: float, hinge_right: bool, mat):
+    hinge_x = x + math.cos(rotation) * (width / 2 if hinge_right else -width / 2)
+    hinge_z = z + math.sin(rotation) * (width / 2 if hinge_right else -width / 2)
+    leaf_rotation = rotation + angle
+    centre_offset = -width / 2 if hinge_right else width / 2
+    centre_x = hinge_x + math.cos(leaf_rotation) * centre_offset
+    centre_z = hinge_z + math.sin(leaf_rotation) * centre_offset
+    base.add_box(name, (centre_x, height / 2, centre_z), (width, height, 0.04), mat, leaf_rotation)
+
+
 def add_opening_visual(opening: dict, accent_mat, glass_mat, wall_height: float):
     x, z = map(float, opening.get("position", (0, 0)))
     width = float(opening.get("width", 0.9))
     rotation = math.radians(float(opening.get("rotation_deg", 0.0)))
-    opening_type = opening.get("opening_type", "door")
-    if opening_type == "window":
-        sill = 0.9
+    opening_type = str(opening.get("opening_type", "door"))
+    opening_id = str(opening.get("id", "opening"))
+
+    if opening_type == "open_passage":
+        return
+
+    if is_window(opening_type):
+        sill = float(opening.get("sill_height", 0.9))
         height = min(float(opening.get("height", 1.25)), max(0.1, wall_height - sill))
-        base.add_box(f'{opening["id"]}-glass', (x, sill + height / 2, z), (width * 0.96, height, 0.025), glass_mat, rotation)
-    elif opening_type in {"sliding_door", "bifold_door"}:
-        height = min(float(opening.get("height", 2.2)), wall_height)
-        base.add_box(f'{opening["id"]}-glass', (x, height / 2, z), (width * 0.96, height, 0.03), glass_mat, rotation)
-        base.add_box(f'{opening["id"]}-rail', (x, height, z), (width + 0.08, 0.045, 0.06), accent_mat, rotation)
-    elif opening_type == "door":
-        height = min(float(opening.get("height", 2.1)), wall_height)
-        swing = -1 if opening.get("swing_direction") == "counterclockwise" else 1
-        leaf_angle = rotation + swing * math.radians(68)
-        offset = width * 0.33
+        depth = 0.12 if opening_type in {"bay_window", "bow_window", "garden_window"} else 0.025
+        base.add_box(f"{opening_id}-glass", (x, sill + height / 2, z), (width * 0.96, height, depth), glass_mat, rotation)
+        if opening_type in {"bay_window", "bow_window"}:
+            side_width = width * 0.28
+            offset = width * 0.41
+            for index, sign in enumerate((-1, 1)):
+                side_rotation = rotation - sign * math.radians(24)
+                side_x = x + math.cos(rotation) * offset * sign + math.cos(rotation + math.pi / 2) * 0.12
+                side_z = z + math.sin(rotation) * offset * sign + math.sin(rotation + math.pi / 2) * 0.12
+                base.add_box(f"{opening_id}-bay-{index}", (side_x, sill + height / 2, side_z), (side_width, height, 0.025), glass_mat, side_rotation)
+        return
+
+    height = min(float(opening.get("height", 2.1)), wall_height)
+    open_angle = _door_angle(opening)
+
+    if opening_type == "revolving_door":
+        base.add_cylinder(f"{opening_id}-drum", (x, height / 2, z), width / 2, height, glass_mat, vertices=48)
+        for index, angle in enumerate((0.0, math.pi / 2)):
+            base.add_box(f"{opening_id}-blade-{index}", (x, height / 2, z), (width, height, 0.04), accent_mat, angle + open_angle)
+        return
+
+    if opening_type == "overhead_door":
+        raised = bool(opening.get("default_open", False))
         base.add_box(
-            f'{opening["id"]}-door-leaf',
-            (x + math.cos(rotation) * offset, height / 2, z + math.sin(rotation) * offset),
-            (width * 0.92, height, 0.04),
+            f"{opening_id}-overhead",
+            (x, height if raised else height / 2, z - (height / 2 if raised else 0)),
+            (width * 0.96, 0.06 if raised else height, height if raised else 0.05),
             accent_mat,
-            leaf_angle,
+            rotation,
         )
+        return
+
+    if opening_type in SLIDING_TYPES:
+        opened = bool(opening.get("default_open", False))
+        double = opening_type in DOUBLE_TYPES
+        glass = opening_type == "sliding_glass_door"
+        material = glass_mat if glass else accent_mat
+        shift = width * 0.46 if opened else 0.0
+        if double:
+            leaf_width = width / 2
+            for index, sign in enumerate((-1, 1)):
+                leaf_x = x + math.cos(rotation) * (sign * width * 0.25 + shift * sign)
+                leaf_z = z + math.sin(rotation) * (sign * width * 0.25 + shift * sign)
+                base.add_box(f"{opening_id}-slide-{index}", (leaf_x, height / 2, leaf_z), (leaf_width * 0.96, height, 0.04), material, rotation)
+        else:
+            leaf_x = x + math.cos(rotation) * shift
+            leaf_z = z + math.sin(rotation) * shift
+            base.add_box(f"{opening_id}-slide", (leaf_x, height / 2, leaf_z), (width * 0.96, height, 0.04), material, rotation)
+        base.add_box(f"{opening_id}-rail", (x, height, z), (width + 0.08, 0.045, 0.06), accent_mat, rotation)
+        return
+
+    double = opening_type in {"double_door", "double_bifold_door"}
+    folding = opening_type in FOLDING_TYPES
+    if double:
+        leaf_width = width / 2
+        angle = open_angle if open_angle else (math.radians(38) if folding else 0.0)
+        _add_hinged_leaf(f"{opening_id}-left", x - math.cos(rotation) * width / 4, z - math.sin(rotation) * width / 4, leaf_width, height, rotation, angle, False, accent_mat)
+        _add_hinged_leaf(f"{opening_id}-right", x + math.cos(rotation) * width / 4, z + math.sin(rotation) * width / 4, leaf_width, height, rotation, -angle, True, accent_mat)
+    else:
+        hinge_right = opening.get("hinge_side") == "right"
+        angle = open_angle if open_angle else (math.radians(38) if folding and opening.get("default_open") else 0.0)
+        _add_hinged_leaf(f"{opening_id}-leaf", x, z, width * 0.94, height, rotation, angle, hinge_right, accent_mat)
 
 
 def add_window_lights(openings: list[dict], ceiling_height: float):
-    for index, opening in enumerate(openings[:24]):
-        if opening.get("opening_type") != "window":
-            continue
+    windows = [opening for opening in openings if is_window(str(opening.get("opening_type", "")))]
+    for index, opening in enumerate(windows[:24]):
         x, z = map(float, opening.get("position", (0, 0)))
         width = max(0.6, float(opening.get("width", 1.2)))
         bpy.ops.object.light_add(type="AREA", location=(x, min(1.7, ceiling_height - 0.3), z))
@@ -210,7 +292,8 @@ def main() -> None:
     furniture_mat = base.material("Furniture Fabric", base.hex_rgba(accent_spec.get("hex_color", "#2E79C6")), 0.58, 0.0, 0.32)
     porcelain_mat = base.material("Porcelain", (0.91, 0.92, 0.90, 1), 0.28, 0.0, 0.55)
     glass_mat = base.material("Architectural Glass", (0.30, 0.55, 0.72, 0.22), 0.08, 0.0, 0.75)
-    glass_mat.surface_render_method = "DITHERED" if hasattr(glass_mat, "surface_render_method") else getattr(glass_mat, "surface_render_method", None)
+    if hasattr(glass_mat, "surface_render_method"):
+        glass_mat.surface_render_method = "DITHERED"
     ceiling_mat = base.material("Ceiling", (0.92, 0.92, 0.90, 1), 0.9, 0.0, 0.12)
 
     video_mode = args.mode == "video"
