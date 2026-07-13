@@ -5,14 +5,20 @@ from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse
+from pydantic import BaseModel
 
 from .models import AnalyzeRequest, MaterialUpdateRequest, Opening, Project, SceneManifest
 from .storage import load_project, project_dir, save_project, write_json
 from .services.architecture import compile_architecture, update_materials
 from .services.scene import apply_assets
 from .services.segmentation import refine_scene_with_model
+from .services.training_data import export_corrected_training_example
 
 router = APIRouter(prefix="/api/v1")
+
+
+class TrainingExampleRequest(BaseModel):
+    confirmed_rights: bool = False
 
 
 def _project(project_id: str) -> Project:
@@ -72,6 +78,20 @@ def compile_project_architecture(project_id: str, request: AnalyzeRequest) -> Sc
     except Exception as exc:
         raise HTTPException(status_code=422, detail=f"Architectural compilation failed: {exc}")
     return _persist(project, scene, "architecture_compiled")
+
+
+@router.post("/projects/{project_id}/training-example")
+def create_training_example(project_id: str, request: TrainingExampleRequest) -> dict[str, object]:
+    project = _project(project_id)
+    if not request.confirmed_rights:
+        raise HTTPException(status_code=400, detail="Confirm that you own or are authorised to use this plan for model training.")
+    if not project.floorplan or not project.scene:
+        raise HTTPException(status_code=409, detail="Upload a plan and confirm its room geometry first.")
+    image_path = project_dir(project_id) / "working" / "floorplan.png"
+    try:
+        return export_corrected_training_example(project, image_path)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
 
 
 @router.put("/projects/{project_id}/materials", response_model=SceneManifest)
