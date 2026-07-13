@@ -45,9 +45,12 @@ try {
         --collect-all trimesh `
         --collect-all pytesseract `
         --add-data "app\prompts;app\prompts" `
+        --add-data "app\blender;app\blender" `
         --hidden-import app.main `
         --hidden-import app.architecture_api `
         --hidden-import app.services.architecture `
+        --hidden-import app.services.segmentation `
+        --hidden-import app.services.training_data `
         --hidden-import app.services.drawings `
         --hidden-import uvicorn.logging `
         --hidden-import uvicorn.loops.auto `
