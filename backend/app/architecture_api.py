@@ -11,6 +11,7 @@ from .models import AnalyzeRequest, MaterialUpdateRequest, Opening, Project, Sce
 from .storage import load_project, project_dir, save_project, write_json
 from .services.architecture import compile_architecture, update_materials
 from .services.architecture_export import production_architecture_payload
+from .services.opening_symbols import classify_opening_symbols
 from .services.scene import apply_assets
 from .services.segmentation import refine_scene_with_model
 from .services.training_data import export_corrected_training_example
@@ -47,19 +48,23 @@ def _persist(project: Project, scene: SceneManifest, status: str) -> SceneManife
     return scene
 
 
+def _priority(opening: Opening) -> tuple[int, float]:
+    return ({"manual": 4, "vision": 3, "model": 2, "heuristic": 1}.get(opening.source, 0), opening.confidence)
+
+
 def _merge_openings(primary: list[Opening], secondary: list[Opening]) -> list[Opening]:
     merged: list[Opening] = []
     for opening in [*primary, *secondary]:
         duplicate = next((
             item for item in merged
-            if item.opening_type == opening.opening_type
-            and math.dist(item.position, opening.position) <= max(0.3, min(item.width, opening.width) * 0.45)
+            if math.dist(item.position, opening.position) <= max(0.3, min(item.width, opening.width) * 0.5)
+            and (not item.wall_id or not opening.wall_id or item.wall_id == opening.wall_id)
         ), None)
         if duplicate is None:
             merged.append(opening)
-        elif opening.confidence > duplicate.confidence:
+        elif _priority(opening) > _priority(duplicate):
             merged[merged.index(duplicate)] = opening
-    return merged[:120]
+    return merged[:160]
 
 
 @router.post("/projects/{project_id}/compile-architecture", response_model=SceneManifest)
@@ -73,13 +78,14 @@ def compile_project_architecture(project_id: str, request: AnalyzeRequest) -> Sc
     if not image_path.exists():
         raise HTTPException(status_code=409, detail="The floor-plan preview is unavailable")
     try:
+        manual_openings = [item.model_copy(deep=True) for item in project.scene.openings if item.source == "manual"]
         vector_refined = add_diagonal_wall_candidates(project.scene, image_path)
         refined = refine_scene_with_model(vector_refined, image_path)
-        learned_openings = list(refined.openings)
+        learned_openings = [item.model_copy(deep=True) for item in refined.openings if item.source != "manual"]
         scene = compile_architecture(refined, image_path, request)
-        if learned_openings:
-            scene.openings = _merge_openings(learned_openings, scene.openings)
-            scene.project_metadata.detected_openings = len(scene.openings)
+        scene = classify_opening_symbols(scene, image_path)
+        scene.openings = _merge_openings(manual_openings, _merge_openings(learned_openings, scene.openings))
+        scene.project_metadata.detected_openings = len(scene.openings)
     except Exception as exc:
         raise HTTPException(status_code=422, detail=f"Architectural compilation failed: {exc}")
     return _persist(project, scene, "architecture_compiled")
