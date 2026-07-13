@@ -13,9 +13,13 @@ SETTINGS_FILE = DATA_DIR / "settings.json"
 
 DEFAULT_SETTINGS: dict[str, Any] = {
     "blender_executable": "",
+    "tesseract_executable": "",
     "image_to_3d_command": "",
     "ai_endpoint": "",
     "ai_token": "",
+    "vision_endpoint": "",
+    "vision_token": "",
+    "vision_model": "custom-multimodal-parser",
     "allow_remote_processing": False,
 }
 
