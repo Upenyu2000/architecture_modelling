@@ -9,6 +9,7 @@ import { SettingsPanel } from './components/SettingsPanel';
 import { ModelDrawingPanel } from './components/ModelDrawingPanel';
 import { ArchitecturePanel } from './components/ArchitecturePanel';
 import { absoluteUrl, api, initApi } from './lib/api';
+import type { FurniturePayload } from './interior-types';
 import type {
   AssetCategory, Job, MaterialUpdate, ModelUnits, OpeningPayload, PlanType, Project, SaveSlot,
   UpAxis, WallDetectionMode,
@@ -92,6 +93,7 @@ function App() {
 
   const uploadAsset = (category: AssetCategory, slot: string, file: File) => run(async () => {
     setProject(await api.uploadAsset(project!.id, category, slot, file));
+    setNotice('Reference image uploaded. It can now be mapped to a replaceable procedural furniture model or PBR surface.');
   });
 
   const uploadBuildingModel = (file: File) => run(async () => {
@@ -114,7 +116,7 @@ function App() {
       setNotice(
         useVisionAi
           ? 'Architectural scene compiled. The configured vision service was used only if private remote processing was enabled.'
-          : 'Architectural scene compiled with walls, classified openings, fixtures, collision data and walkthrough coordinates.',
+          : 'Architectural scene compiled with merged walls, portal openings, furniture proposals, collision data and walkthrough coordinates.',
       );
     });
   };
@@ -140,7 +142,7 @@ function App() {
       false,
     );
     setProject((current) => current ? { ...current, scene, status: 'architecture_compiled' } : current);
-    setNotice('Analysis and production compilation complete. Verify rooms, doors, windows, cutaway and first-person interaction.');
+    setNotice('Analysis and production compilation complete. Verify rooms, furniture, doors, windows, cutaway and portal walkthrough.');
   });
 
   const applyMaterials = async (settings: MaterialUpdate) => {
@@ -161,7 +163,7 @@ function App() {
     await run(async () => {
       const scene = await api.startManualLayout(project!.id, planWidth, wallHeight, true);
       setProject((current) => current ? { ...current, scene, status: 'manual_layout' } : current);
-      setNotice('Manual room layout started. Draw rooms first, then use Doors & Windows to add interactive openings.');
+      setNotice('Manual room layout started. Draw free-form rooms, then add shared-wall doors and interior furniture.');
     });
   };
 
@@ -207,7 +209,7 @@ function App() {
     if (!project) return;
     const scene = await api.updateOpening(project.id, openingId, payload);
     setProject((current) => current ? { ...current, scene, status: 'openings_updated' } : current);
-    setNotice('Opening updated and the wall cut-out was rebuilt.');
+    setNotice('Opening updated and the portal wall cut-out was rebuilt.');
   };
 
   const deleteOpening = async (openingId: string) => {
@@ -215,6 +217,27 @@ function App() {
     const scene = await api.deleteOpening(project.id, openingId);
     setProject((current) => current ? { ...current, scene, status: 'openings_updated' } : current);
     setNotice('Opening removed.');
+  };
+
+  const addFurniture = async (payload: FurniturePayload) => {
+    if (!project) return;
+    const scene = await api.addFurniture(project.id, payload);
+    setProject((current) => current ? { ...current, scene, status: 'interior_updated' } : current);
+    setNotice(`${payload.object_type.replaceAll('_', ' ')} added as a detailed procedural PBR model.`);
+  };
+
+  const updateFurniture = async (objectId: string, payload: Partial<FurniturePayload>) => {
+    if (!project) return;
+    const scene = await api.updateFurniture(project.id, objectId, payload);
+    setProject((current) => current ? { ...current, scene, status: 'interior_updated' } : current);
+    setNotice('Furniture replaced and the live cutaway, first-person viewport and render scene were updated.');
+  };
+
+  const deleteFurniture = async (objectId: string) => {
+    if (!project) return;
+    const scene = await api.deleteFurniture(project.id, objectId);
+    setProject((current) => current ? { ...current, scene, status: 'interior_updated' } : current);
+    setNotice('Furniture removed.');
   };
 
   const saveCurrentBuild = () => run(async () => {
@@ -314,14 +337,8 @@ function App() {
     <main className="app-shell">
       <header className="topbar">
         <div className="brand-mark"><Box size={24} /></div>
-        <div className="brand-copy">
-          <span>Arch-AI Convert</span>
-          <strong>Production Architectural Visualizer</strong>
-        </div>
-        <div className="topbar-meta">
-          <span className="local-badge">Local-first Windows app</span>
-          <span>{project?.name ?? 'Starting…'}</span>
-        </div>
+        <div className="brand-copy"><span>Arch-AI Convert 1.5</span><strong>Architectural and Interior Design Visualizer</strong></div>
+        <div className="topbar-meta"><span className="local-badge">Local-first Windows app</span><span>{project?.name ?? 'Starting…'}</span></div>
       </header>
 
       {error && <div className="error-banner">{error}</div>}
@@ -332,98 +349,41 @@ function App() {
           <UploadPanel project={project} busy={busy} onFloorplan={uploadFloorplan} onAsset={uploadAsset} />
 
           <section className="panel save-panel">
-            <div className="panel-heading">
-              <div><span className="eyebrow">Save manager</span><h2>Build save slots</h2></div>
-              <Save size={22} />
-            </div>
-            <p className="panel-copy">Keep named copies of the complete build, including uploads, geometry, materials, drawings and generated outputs.</p>
+            <div className="panel-heading"><div><span className="eyebrow">Save manager</span><h2>Build save slots</h2></div><Save size={22} /></div>
+            <p className="panel-copy">Keep named copies of the complete build, including uploads, geometry, interiors, materials, drawings and generated outputs.</p>
             <div className="save-row">
-              <input
-                value={slotName}
-                maxLength={80}
-                placeholder={`Saved Build ${saveSlots.length + 1}`}
-                onChange={(event) => setSlotName(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === 'Enter' && !busy && hasBuild) void saveCurrentBuild();
-                }}
-              />
-              <button className="secondary" disabled={busy || !hasBuild} onClick={saveCurrentBuild}>
-                <Save size={16} /> Save
-              </button>
+              <input value={slotName} maxLength={80} placeholder={`Saved Build ${saveSlots.length + 1}`} onChange={(event) => setSlotName(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter' && !busy && hasBuild) void saveCurrentBuild(); }} />
+              <button className="secondary" disabled={busy || !hasBuild} onClick={saveCurrentBuild}><Save size={16} /> Save</button>
             </div>
-
             <div className="slot-list">
-              {saveSlots.length === 0 ? (
-                <div className="empty-slots">No saved builds yet.</div>
-              ) : saveSlots.map((slot) => (
+              {saveSlots.length === 0 ? <div className="empty-slots">No saved builds yet.</div> : saveSlots.map((slot) => (
                 <article className="slot-card" key={slot.id}>
-                  <div className="slot-copy">
-                    <strong>{slot.name}</strong>
-                    <span><Clock3 size={12} /> {savedAt(slot.updated_at)}</span>
-                    <small>
-                      {slot.floorplan_filename ?? slot.building_model_filename ?? 'No source file'} · {slot.asset_count} assets · {slot.has_drawings ? 'drawings ready' : slot.has_scene ? '3D scene ready' : slot.status}
-                    </small>
-                  </div>
-                  <div className="slot-actions">
-                    <button disabled={busy} title="Load saved build" onClick={() => loadSavedBuild(slot)}>
-                      <FolderOpen size={16} /> Load
-                    </button>
-                    <button className="danger-icon" disabled={busy} title="Delete save slot" onClick={() => removeSavedBuild(slot)}>
-                      <Trash2 size={16} />
-                    </button>
-                  </div>
+                  <div className="slot-copy"><strong>{slot.name}</strong><span><Clock3 size={12} /> {savedAt(slot.updated_at)}</span><small>{slot.floorplan_filename ?? slot.building_model_filename ?? 'No source file'} · {slot.asset_count} assets · {slot.has_drawings ? 'drawings ready' : slot.has_scene ? '3D scene ready' : slot.status}</small></div>
+                  <div className="slot-actions"><button disabled={busy} title="Load saved build" onClick={() => loadSavedBuild(slot)}><FolderOpen size={16} /> Load</button><button className="danger-icon" disabled={busy} title="Delete save slot" onClick={() => removeSavedBuild(slot)}><Trash2 size={16} /></button></div>
                 </article>
               ))}
             </div>
-
-            <button className="danger-button" disabled={busy || !hasBuild} onClick={resetProject}>
-              <RotateCcw size={17} /> Reset active project
-            </button>
+            <button className="danger-button" disabled={busy || !hasBuild} onClick={resetProject}><RotateCcw size={17} /> Reset active project</button>
             <span className="reset-note">Reset clears active files only. Save slots remain available.</span>
           </section>
 
           <section className="panel analysis-panel">
             <div className="panel-heading"><div><span className="eyebrow">2. Geometry</span><h2>Automatic or manual layout</h2></div><ScanLine size={22} /></div>
-            <p className="panel-copy">Blueprint and rendered plans use separate processing paths. Manual mode lets you trace any room shape and size over the source.</p>
+            <p className="panel-copy">Blueprint and rendered plans use separate processing paths. Manual mode supports free-form room polygons, shared-wall snapping and portal doorways.</p>
             <div className="two-inputs">
               <label>Plan width (metres)<input type="number" min="2" step="0.1" value={planWidth} onChange={(e) => setPlanWidth(Number(e.target.value))} /></label>
               <label>Wall height (metres)<input type="number" min="2" max="8" step="0.1" value={wallHeight} onChange={(e) => setWallHeight(Number(e.target.value))} /></label>
-              <label>Plan type
-                <select value={planType} onChange={(event) => setPlanType(event.target.value as PlanType)}>
-                  <option value="auto">Auto detect</option>
-                  <option value="blueprint">Blueprint / CAD line drawing</option>
-                  <option value="rendered">Rendered / furnished plan</option>
-                </select>
-              </label>
-              <label>Wall detection
-                <select value={wallDetection} onChange={(event) => setWallDetection(event.target.value as WallDetectionMode)}>
-                  <option value="clean">Clean — fewer walls</option>
-                  <option value="balanced">Balanced</option>
-                  <option value="detailed">Detailed — preserve short walls</option>
-                </select>
-              </label>
-              <label>Minimum wall length
-                <div className="unit-input"><input type="number" min="0.3" max="10" step="0.1" value={minimumWallLength} onChange={(event) => setMinimumWallLength(Number(event.target.value))} /><span>m</span></div>
-              </label>
+              <label>Plan type<select value={planType} onChange={(event) => setPlanType(event.target.value as PlanType)}><option value="auto">Auto detect</option><option value="blueprint">Blueprint / CAD line drawing</option><option value="rendered">Rendered / furnished plan</option></select></label>
+              <label>Wall detection<select value={wallDetection} onChange={(event) => setWallDetection(event.target.value as WallDetectionMode)}><option value="clean">Clean — fewer walls</option><option value="balanced">Balanced</option><option value="detailed">Detailed — preserve short walls</option></select></label>
+              <label>Minimum wall length<div className="unit-input"><input type="number" min="0.3" max="10" step="0.1" value={minimumWallLength} onChange={(event) => setMinimumWallLength(Number(event.target.value))} /><span>m</span></div></label>
             </div>
             <button className="primary" disabled={busy || !project?.floorplan} onClick={analyze}><Sparkles size={18} /> Analyze, classify and compile</button>
             <button className="secondary full-width" disabled={busy || !project?.floorplan} onClick={() => void startManualLayout()}><Edit3 size={18} /> Start blank manual room layout</button>
-            <span className="manual-note">Use Edit Rooms for free-form geometry and Doors & Windows for manual opening placement.</span>
+            <span className="manual-note">Use Edit Rooms, Doors & Windows and Interior Design to correct every result.</span>
           </section>
 
-          <ArchitecturePanel
-            project={project}
-            busy={busy}
-            onCompile={compileArchitecture}
-            onApply={applyMaterials}
-          />
-
-          <ModelDrawingPanel
-            project={project}
-            busy={busy}
-            onUpload={uploadBuildingModel}
-            onGenerate={generateDrawings}
-          />
+          <ArchitecturePanel project={project} busy={busy} onCompile={compileArchitecture} onApply={applyMaterials} />
+          <ModelDrawingPanel project={project} busy={busy} onUpload={uploadBuildingModel} onGenerate={generateDrawings} />
           <SettingsPanel />
         </aside>
 
@@ -438,19 +398,14 @@ function App() {
             onAddOpening={addOpening}
             onUpdateOpening={updateOpening}
             onDeleteOpening={deleteOpening}
+            onAddFurniture={addFurniture}
+            onUpdateFurniture={updateFurniture}
+            onDeleteFurniture={deleteFurniture}
           />
           <section className="output-panel">
-            <div className="output-copy">
-              <span className="eyebrow">5. Output</span>
-              <h2>Photorealistic cutaway and walkthrough</h2>
-              <p>The same compiled architecture JSON drives the live cutaway, interactive first-person doors, Blender HD/4K render and MP4 camera path.</p>
-            </div>
+            <div className="output-copy"><span className="eyebrow">5. Output</span><h2>Photorealistic interior cutaway and walkthrough</h2><p>The same scene JSON drives detailed procedural furniture, uploaded-image materials, portal-aware first-person interaction and Blender HD/4K output.</p></div>
             <div className="render-controls">
-              <select value={renderEngine} onChange={(e) => setRenderEngine(e.target.value as typeof renderEngine)}>
-                <option value="auto">Auto engine</option>
-                <option value="technical">Fast technical renderer</option>
-                <option value="blender">Blender 4 renderer</option>
-              </select>
+              <select value={renderEngine} onChange={(e) => setRenderEngine(e.target.value as typeof renderEngine)}><option value="auto">Auto engine</option><option value="technical">Fast technical renderer</option><option value="blender">Blender 4 renderer</option></select>
               <button disabled={busy || !project?.scene} onClick={() => render('preview')}><ImageIcon size={17} /> Preview</button>
               <button disabled={busy || !project?.scene} onClick={() => render('1080p')}><Play size={17} /> HD</button>
               <button disabled={busy || !project?.scene} onClick={() => render('4k')}><Sparkles size={17} /> 4K</button>
@@ -458,15 +413,7 @@ function App() {
             </div>
           </section>
 
-          {job && (
-            <section className="job-panel">
-              <div><strong>{job.kind.replaceAll('_', ' ')}</strong><span>{job.message}</span></div>
-              <div className="progress"><i style={{ width: `${job.progress}%` }} /></div>
-              <strong>{job.progress}%</strong>
-              {job.output_url && <a href={absoluteUrl(job.output_url)} target="_blank" rel="noreferrer">Open output</a>}
-              {job.output_path && window.desktop && <button className="link-button" onClick={() => window.desktop?.openPath(job.output_path!)}>Show in Explorer</button>}
-            </section>
-          )}
+          {job && <section className="job-panel"><div><strong>{job.kind.replaceAll('_', ' ')}</strong><span>{job.message}</span></div><div className="progress"><i style={{ width: `${job.progress}%` }} /></div><strong>{job.progress}%</strong>{job.output_url && <a href={absoluteUrl(job.output_url)} target="_blank" rel="noreferrer">Open output</a>}{job.output_path && window.desktop && <button className="link-button" onClick={() => window.desktop?.openPath(job.output_path!)}>Show in Explorer</button>}</section>}
         </section>
       </div>
     </main>
