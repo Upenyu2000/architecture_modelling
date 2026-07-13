@@ -42,7 +42,9 @@ try {
         --collect-submodules app `
         --collect-all pypdfium2 `
         --collect-all cv2 `
+        --collect-all trimesh `
         --hidden-import app.main `
+        --hidden-import app.services.drawings `
         --hidden-import uvicorn.logging `
         --hidden-import uvicorn.loops.auto `
         --hidden-import uvicorn.protocols.http.auto `
