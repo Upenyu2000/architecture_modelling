@@ -10,6 +10,7 @@ from pydantic import BaseModel
 from .models import AnalyzeRequest, MaterialUpdateRequest, Opening, Project, SceneManifest
 from .storage import load_project, project_dir, save_project, write_json
 from .services.architecture import compile_architecture, update_materials
+from .services.architecture_export import production_architecture_payload
 from .services.scene import apply_assets
 from .services.segmentation import refine_scene_with_model
 from .services.training_data import export_corrected_training_example
@@ -33,10 +34,12 @@ def _persist(project: Project, scene: SceneManifest, status: str) -> SceneManife
     scene.project_metadata.detected_objects = len(scene.fixtures_and_furniture) + len(scene.assets)
     scene.project_metadata.detected_openings = len(scene.openings)
     scene.project_metadata.detected_rooms = len(scene.rooms)
-    target = project_dir(project.id) / "working" / "architecture.json"
+    working = project_dir(project.id) / "working"
+    scene_path = working / "scene.json"
+    export_path = working / "architecture.json"
     scene.architecture_json_url = f"/api/v1/projects/{project.id}/architecture.json"
-    write_json(target, scene.model_dump(mode="json"))
-    write_json(project_dir(project.id) / "working" / "scene.json", scene.model_dump(mode="json"))
+    write_json(scene_path, scene.model_dump(mode="json"))
+    write_json(export_path, production_architecture_payload(scene))
     project.scene = scene
     project.status = status
     save_project(project)
@@ -119,5 +122,5 @@ def download_architecture_json(project_id: str):
     if not project.scene:
         raise HTTPException(status_code=409, detail="Compile the architectural scene first")
     target = project_dir(project_id) / "working" / "architecture.json"
-    write_json(target, project.scene.model_dump(mode="json"))
+    write_json(target, production_architecture_payload(project.scene))
     return FileResponse(target, filename=f"{project.name.replace(' ', '-')}-architecture.json", media_type="application/json")
