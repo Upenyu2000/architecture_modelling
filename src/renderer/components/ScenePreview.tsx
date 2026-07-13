@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Canvas } from '@react-three/fiber';
+import { Canvas, useThree } from '@react-three/fiber';
 import {
   Grid, OrbitControls, OrthographicCamera, PerspectiveCamera, useTexture,
 } from '@react-three/drei';
@@ -69,6 +69,30 @@ function ReferenceFloor({ url, scene }: { url: string; scene: SceneManifest }) {
   );
 }
 
+function ResponsiveTopCamera({ scene }: { scene: SceneManifest }) {
+  const { size } = useThree();
+  const aspect = size.width / Math.max(size.height, 1);
+  const centreX = scene.width_m / 2;
+  const centreZ = scene.depth_m / 2;
+  const halfHeight = Math.max(scene.depth_m * 0.58, (scene.width_m / Math.max(aspect, 0.1)) * 0.58, 2.4);
+  const halfWidth = halfHeight * aspect;
+  const height = Math.max(scene.width_m, scene.depth_m, 4) * 2.2;
+  return (
+    <OrthographicCamera
+      key={`${size.width}-${size.height}`}
+      makeDefault
+      position={[centreX, height, centreZ]}
+      rotation={[-Math.PI / 2, 0, 0]}
+      left={-halfWidth}
+      right={halfWidth}
+      top={halfHeight}
+      bottom={-halfHeight}
+      near={0.1}
+      far={height * 3}
+    />
+  );
+}
+
 function SceneContent({ scene, referenceUrl, view }: {
   scene: SceneManifest;
   referenceUrl?: string;
@@ -103,17 +127,7 @@ function SceneContent({ scene, referenceUrl, view }: {
       />
       {view === 'top' ? (
         <>
-          <OrthographicCamera
-            makeDefault
-            position={[centreX, largest * 2.2, centreZ]}
-            rotation={[-Math.PI / 2, 0, 0]}
-            left={-largest * 0.68}
-            right={largest * 0.68}
-            top={largest * 0.68}
-            bottom={-largest * 0.68}
-            near={0.1}
-            far={largest * 5}
-          />
+          <ResponsiveTopCamera scene={scene} />
           <OrbitControls
             makeDefault
             target={[centreX, 0, centreZ]}
