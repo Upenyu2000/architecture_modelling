@@ -46,13 +46,13 @@ def export_corrected_training_example(project: Project, image_path: Path) -> dic
             [round(x * px_per_m_x), round(z * px_per_m_z)] for x, z in room.polygon
         ], dtype=np.int32)
         if len(points) >= 3:
-            cv2.fillPoly(mask, [points], CLASS_IDS["room"])
+            cv2.fillPoly(mask, [points], CLASS_IDS["room"], lineType=cv2.LINE_8)
 
     for wall in scene.walls:
         thickness = max(2, round(wall.thickness * (px_per_m_x + px_per_m_z) / 2))
         start = (round(wall.start[0] * px_per_m_x), round(wall.start[1] * px_per_m_z))
         end = (round(wall.end[0] * px_per_m_x), round(wall.end[1] * px_per_m_z))
-        cv2.line(mask, start, end, CLASS_IDS["wall"], thickness, cv2.LINE_AA)
+        cv2.line(mask, start, end, CLASS_IDS["wall"], thickness, cv2.LINE_8)
 
     for opening in scene.openings:
         class_id = CLASS_IDS["window"] if opening.opening_type == "window" else CLASS_IDS["door"]
@@ -61,7 +61,14 @@ def export_corrected_training_example(project: Project, image_path: Path) -> dic
         angle = np.deg2rad(opening.rotation_deg)
         dx = round(np.cos(angle) * half)
         dy = round(np.sin(angle) * half)
-        cv2.line(mask, (centre[0] - dx, centre[1] - dy), (centre[0] + dx, centre[1] + dy), class_id, max(3, round(min(px_per_m_x, px_per_m_z) * 0.12)), cv2.LINE_AA)
+        cv2.line(
+            mask,
+            (centre[0] - dx, centre[1] - dy),
+            (centre[0] + dx, centre[1] + dy),
+            class_id,
+            max(3, round(min(px_per_m_x, px_per_m_z) * 0.12)),
+            cv2.LINE_8,
+        )
 
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     identifier = hashlib.sha256(f"{project.id}:{timestamp}:{len(scene.rooms)}:{len(scene.walls)}".encode("utf-8")).hexdigest()[:16]
