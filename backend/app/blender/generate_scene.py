@@ -7,7 +7,6 @@ import sys
 from pathlib import Path
 
 import bpy
-from mathutils import Vector
 
 
 def parse_args() -> argparse.Namespace:
@@ -107,23 +106,19 @@ def add_room_floor(room, mat):
     obj.data.materials.append(mat)
 
 
-def point_camera(camera, target) -> None:
-    direction = Vector(target) - camera.location
-    camera.rotation_euler = direction.to_track_quat("-Z", "Y").to_euler()
-
-
 def add_topdown_camera(scene_data):
     width = float(scene_data["width_m"])
     depth = float(scene_data["depth_m"])
-    centre = (width / 2, 0, depth / 2)
+    centre_x = width / 2
+    centre_z = depth / 2
     largest = max(width, depth, 4.0)
-    bpy.ops.object.camera_add(location=(centre[0], largest * 2.2, centre[2]))
+    bpy.ops.object.camera_add(location=(centre_x, largest * 2.2, centre_z))
     camera = bpy.context.active_object
     camera.name = "TopDownCamera"
     camera.data.type = "ORTHO"
     camera.data.ortho_scale = largest * 1.12
     camera.data.lens = 50
-    point_camera(camera, centre)
+    camera.rotation_euler = (-math.pi / 2, 0.0, 0.0)
     bpy.context.scene.camera = camera
     return camera
 
