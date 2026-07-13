@@ -54,6 +54,18 @@ export interface Project {
   scene?: SceneManifest | null;
 }
 
+export interface SaveSlot {
+  id: string;
+  name: string;
+  created_at: string;
+  updated_at: string;
+  status: string;
+  floorplan_filename?: string | null;
+  preview_url?: string | null;
+  asset_count: number;
+  has_scene: boolean;
+}
+
 export interface Job {
   id: string;
   project_id: string;
