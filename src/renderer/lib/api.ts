@@ -3,6 +3,8 @@ import type {
   UpAxis, WallDetectionMode,
 } from '../types';
 
+export type AppSettingValue = string | boolean | number;
+
 let cachedBaseUrl = 'http://127.0.0.1:8765';
 
 export async function initApi(): Promise<void> {
@@ -128,13 +130,19 @@ export const api = {
       useVisionAi,
     )),
   }),
+  exportTrainingExample: (id: string) =>
+    request<{ id: string; split: string; workspace: string; image: string; mask: string; scene: string }>(`/api/v1/projects/${id}/training-example`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ confirmed_rights: true }),
+    }),
   updateMaterials: (id: string, materials: MaterialUpdate) =>
     request<SceneManifest>(`/api/v1/projects/${id}/materials`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(materials),
     }),
-  architectureJsonUrl: (id: string) => absoluteUrl(`/api/v1/projects/${id}/architecture.json`)!,
+  architectureJsonUrl: (id: string) => absoluteUrl(`/api/v1/projects/${id}/architecture.json`)! ,
   startManualLayout: (id: string, planWidthM: number, wallHeightM: number, clearExisting = true) =>
     request<SceneManifest>(`/api/v1/projects/${id}/manual-layout`, {
       method: 'POST',
@@ -178,9 +186,9 @@ export const api = {
       body: JSON.stringify({ seconds, quality, engine }),
     }),
   getJob: (id: string) => request<Job>(`/api/v1/jobs/${id}`),
-  getSettings: () => request<Record<string, string | boolean>>('/api/v1/settings'),
-  saveSettings: (settings: Record<string, string | boolean>) =>
-    request<Record<string, string | boolean>>('/api/v1/settings', {
+  getSettings: () => request<Record<string, AppSettingValue>>('/api/v1/settings'),
+  saveSettings: (settings: Record<string, AppSettingValue>) =>
+    request<Record<string, AppSettingValue>>('/api/v1/settings', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(settings),
