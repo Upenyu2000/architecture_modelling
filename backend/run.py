@@ -4,12 +4,9 @@ import os
 
 import uvicorn
 
-# Import the ASGI application directly so PyInstaller can discover and bundle
-# the complete backend package. Do not pass "app.main:app" as a string here.
-from app.main import app as fastapi_app
-from app.architecture_api import router as architecture_router
-
-fastapi_app.include_router(architecture_router)
+# Import one ASGI application for both development and PyInstaller builds.
+# The ASGI module registers architecture compilation and opening CRUD routes.
+from app.asgi import app as fastapi_app
 
 
 if __name__ == "__main__":
