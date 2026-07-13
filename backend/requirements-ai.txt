@@ -1,0 +1,5 @@
+# Optional local AI dependencies. Install only on a CUDA workstation.
+ultralytics>=8.3.0
+# torch and torchvision must match the installed CUDA toolkit.
+# TRELLIS and Hunyuan3D should be installed in their own environments and called
+# through the image_to_3d_command setting.
