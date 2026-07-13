@@ -5,15 +5,9 @@ from typing import Literal
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
-from .models import OpeningCreateRequest, OpeningType, OpeningUpdateRequest, Project, SceneManifest
+from .models import OpeningType, Project, SceneManifest
 from .storage import load_project, project_dir, save_project, write_json
-from .services.openings import (
-    add_opening,
-    add_opening_at_position,
-    delete_opening,
-    update_opening,
-    update_opening_at_position,
-)
+from .services.openings import add_opening_at_position, delete_opening, update_opening_at_position
 from .services.scene import apply_assets
 
 
@@ -22,7 +16,7 @@ router = APIRouter(prefix="/api/v1")
 
 class DirectOpeningRequest(BaseModel):
     opening_type: OpeningType = "door"
-    position: tuple[float, float]
+    position: tuple[float, float] | None = None
     wall_id: str | None = None
     placement_ratio: float | None = Field(default=None, ge=0.0, le=1.0)
     rotation_deg: float = Field(default=0.0, ge=-360.0, le=360.0)
@@ -91,6 +85,20 @@ def _ensure_scene(project: Project, request: DirectOpeningRequest) -> SceneManif
     )
 
 
+def _requested_position(scene: SceneManifest, request: DirectOpeningRequest) -> tuple[float, float]:
+    if request.position is not None:
+        return request.position
+    if request.wall_id:
+        wall = next((item for item in scene.walls if item.id == request.wall_id), None)
+        if wall is not None:
+            ratio = request.placement_ratio if request.placement_ratio is not None else 0.5
+            return (
+                wall.start[0] + (wall.end[0] - wall.start[0]) * ratio,
+                wall.start[1] + (wall.end[1] - wall.start[1]) * ratio,
+            )
+    return (scene.width_m / 2, scene.depth_m / 2)
+
+
 def _persist(project: Project, scene: SceneManifest) -> SceneManifest:
     scene = apply_assets(scene, project.assets)
     scene.project_metadata.detected_openings = len(scene.openings)
@@ -102,16 +110,17 @@ def _persist(project: Project, scene: SceneManifest) -> SceneManifest:
     return scene
 
 
+@router.post("/projects/{project_id}/openings", response_model=SceneManifest)
 @router.post("/projects/{project_id}/openings/direct", response_model=SceneManifest)
-def create_direct_opening(project_id: str, request: DirectOpeningRequest) -> SceneManifest:
+def create_opening(project_id: str, request: DirectOpeningRequest) -> SceneManifest:
     project = _project(project_id)
     scene = _ensure_scene(project, request)
     try:
         scene = add_opening_at_position(
             scene,
             opening_type=request.opening_type,
-            position=request.position,
-            wall_id=request.wall_id,
+            position=_requested_position(scene, request),
+            wall_id=request.wall_id or None,
             placement_ratio=request.placement_ratio,
             rotation_deg=request.rotation_deg,
             snap_to_wall=request.snap_to_wall,
@@ -131,8 +140,9 @@ def create_direct_opening(project_id: str, request: DirectOpeningRequest) -> Sce
     return _persist(project, scene)
 
 
+@router.patch("/projects/{project_id}/openings/{opening_id}", response_model=SceneManifest)
 @router.patch("/projects/{project_id}/openings/{opening_id}/direct", response_model=SceneManifest)
-def change_direct_opening(project_id: str, opening_id: str, request: DirectOpeningUpdateRequest) -> SceneManifest:
+def change_opening(project_id: str, opening_id: str, request: DirectOpeningUpdateRequest) -> SceneManifest:
     project = _project(project_id)
     if not project.scene:
         raise HTTPException(status_code=409, detail="Place an opening or create a layout first")
@@ -142,7 +152,7 @@ def change_direct_opening(project_id: str, opening_id: str, request: DirectOpeni
             opening_id,
             opening_type=request.opening_type,
             position=request.position,
-            wall_id=request.wall_id,
+            wall_id=request.wall_id or None,
             placement_ratio=request.placement_ratio,
             rotation_deg=request.rotation_deg,
             snap_to_wall=request.snap_to_wall,
@@ -155,36 +165,6 @@ def change_direct_opening(project_id: str, opening_id: str, request: DirectOpeni
             interactive=request.interactive,
             default_open=request.default_open,
         )
-    except KeyError as exc:
-        raise HTTPException(status_code=404, detail=str(exc))
-    except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc))
-    return _persist(project, scene)
-
-
-@router.post("/projects/{project_id}/openings", response_model=SceneManifest)
-def create_opening(project_id: str, request: OpeningCreateRequest) -> SceneManifest:
-    project = _project(project_id)
-    if not project.scene:
-        raise HTTPException(status_code=409, detail="Analyze the plan or create a manual layout first")
-    if not project.scene.walls:
-        raise HTTPException(status_code=409, detail="Create or detect walls before adding a wall-attached opening")
-    try:
-        scene = add_opening(project.scene, request)
-    except KeyError as exc:
-        raise HTTPException(status_code=404, detail=str(exc))
-    except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc))
-    return _persist(project, scene)
-
-
-@router.patch("/projects/{project_id}/openings/{opening_id}", response_model=SceneManifest)
-def change_opening(project_id: str, opening_id: str, request: OpeningUpdateRequest) -> SceneManifest:
-    project = _project(project_id)
-    if not project.scene:
-        raise HTTPException(status_code=409, detail="Analyze the plan or create a manual layout first")
-    try:
-        scene = update_opening(project.scene, opening_id, request)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
     except ValueError as exc:
