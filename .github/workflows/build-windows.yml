@@ -25,7 +25,19 @@ jobs:
       - name: Install Node dependencies
         run: npm install
       - name: Type check
-        run: npm run typecheck
+        shell: pwsh
+        run: |
+          $Output = npm run typecheck 2>&1
+          $ExitCode = $LASTEXITCODE
+          $Output | Tee-Object -FilePath typecheck.log
+          exit $ExitCode
+      - name: Upload typecheck diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: TypeScript-Diagnostics
+          path: typecheck.log
+          if-no-files-found: warn
       - name: Build installer
         run: npm run dist:windows
       - uses: actions/upload-artifact@v4
