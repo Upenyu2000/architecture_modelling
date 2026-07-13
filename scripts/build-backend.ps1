@@ -30,6 +30,14 @@ if ($LASTEXITCODE -ne 0) { throw "Failed to upgrade pip." }
 & $Python -m pip install -r (Join-Path $Backend "requirements.txt") pyinstaller==6.14.1
 if ($LASTEXITCODE -ne 0) { throw "Failed to install backend build dependencies." }
 
+Push-Location $Backend
+try {
+    & $Python -m tests.smoke_freeform
+    if ($LASTEXITCODE -ne 0) { throw "Free-form geometry smoke test failed." }
+} finally {
+    Pop-Location
+}
+
 # Remove stale PyInstaller output so the desktop package cannot reuse an old
 # backend executable after source changes.
 Remove-Item -Recurse -Force (Join-Path $Backend "build") -ErrorAction SilentlyContinue
