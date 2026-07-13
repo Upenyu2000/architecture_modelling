@@ -98,8 +98,10 @@ def reset_project(project_id: str) -> Project:
     project = load_project(project_id)
     _clear_active_folders(project_id)
     project.floorplan = None
+    project.building_model = None
     project.assets = {}
     project.scene = None
+    project.drawing_set = None
     project.status = "created"
     return save_project(project)
 
@@ -153,9 +155,11 @@ def create_save_slot(project_id: str, name: str) -> SaveSlotSummary:
         updated_at=timestamp,
         status=project.status,
         floorplan_filename=project.floorplan.filename if project.floorplan else None,
+        building_model_filename=project.building_model.filename if project.building_model else None,
         preview_url=project.floorplan.preview_url if project.floorplan else None,
         asset_count=len(project.assets),
         has_scene=project.scene is not None,
+        has_drawings=project.drawing_set is not None,
     )
     (slot_root / "slot.json").write_text(summary.model_dump_json(indent=2), encoding="utf-8")
     return summary
@@ -185,6 +189,8 @@ def restore_save_slot(project_id: str, slot_id: str) -> Project:
     snapshot.name = summary.name
     if snapshot.scene:
         snapshot.scene.project_id = project_id
+    if snapshot.drawing_set:
+        snapshot.drawing_set.project_id = project_id
     return save_project(snapshot)
 
 
