@@ -3,16 +3,17 @@ import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import {
   Grid, OrbitControls, OrthographicCamera, PerspectiveCamera, PointerLockControls, useTexture,
 } from '@react-three/drei';
-import { Braces, Box, Edit3, Footprints, Map, ScanLine } from 'lucide-react';
+import { Braces, Box, DoorOpen, Edit3, Footprints, Map, ScanLine } from 'lucide-react';
 import * as THREE from 'three';
 import { absoluteUrl } from '../lib/api';
 import type {
-  ArchitecturalObject, MaterialSpec, Opening, Project, SceneManifest, WallSegment,
+  ArchitecturalObject, MaterialSpec, Opening, OpeningPayload, OpeningType, Project, SceneManifest, WallSegment,
 } from '../types';
+import { OpeningEditor } from './OpeningEditor';
 import { RoomLayoutEditor } from './RoomLayoutEditor';
 
 type Point = [number, number];
-type ViewMode = 'isometric' | 'top' | 'walkthrough' | 'edit' | 'structure' | 'data';
+type ViewMode = 'isometric' | 'top' | 'walkthrough' | 'edit' | 'openings' | 'structure' | 'data';
 type RenderedViewMode = 'isometric' | 'top' | 'walkthrough';
 
 interface Props {
@@ -22,6 +23,9 @@ interface Props {
   onUpdateRoom: (roomId: string, polygon: Point[]) => Promise<void>;
   onDeleteRoom: (roomId: string) => Promise<void>;
   onRenameRoom: (roomId: string, name: string) => Promise<void>;
+  onAddOpening: (payload: OpeningPayload) => Promise<void>;
+  onUpdateOpening: (openingId: string, payload: Partial<OpeningPayload>) => Promise<void>;
+  onDeleteOpening: (openingId: string) => Promise<void>;
 }
 
 type ProjectedOpening = {
@@ -30,6 +34,29 @@ type ProjectedOpening = {
   start: number;
   end: number;
 };
+
+const WINDOW_TYPES = new Set<OpeningType>([
+  'window', 'fixed_window', 'casement_window', 'double_casement_window', 'glider_window',
+  'garden_window', 'bay_window', 'bow_window', 'double_hung_window',
+  'vertical_sliding_window', 'horizontal_sliding_window',
+]);
+const DOOR_TYPES = new Set<OpeningType>([
+  'door', 'double_door', 'pocket_door', 'double_pocket_door', 'bypass_door', 'sliding_door',
+  'double_sliding_door', 'sliding_glass_door', 'bifold_door', 'double_bifold_door',
+  'folding_door', 'overhead_door', 'revolving_door',
+]);
+const SLIDING_TYPES = new Set<OpeningType>([
+  'pocket_door', 'double_pocket_door', 'bypass_door', 'sliding_door', 'double_sliding_door', 'sliding_glass_door',
+]);
+const FOLDING_TYPES = new Set<OpeningType>(['bifold_door', 'double_bifold_door', 'folding_door']);
+
+function isWindow(opening: Opening): boolean {
+  return WINDOW_TYPES.has(opening.opening_type);
+}
+
+function isDoor(opening: Opening): boolean {
+  return DOOR_TYPES.has(opening.opening_type);
+}
 
 function distanceToSegment(point: THREE.Vector2, start: Point, end: Point): number {
   const a = new THREE.Vector2(start[0], start[1]);
@@ -159,8 +186,8 @@ function Wall({ wall, scene, cutaway }: { wall: WallSegment; scene: SceneManifes
       ))}
       {projected.map(({ opening, start, end }) => {
         if (opening.opening_type === 'open_passage') return null;
-        if (opening.opening_type === 'window') {
-          const sill = Math.min(0.9, visibleHeight);
+        if (isWindow(opening)) {
+          const sill = Math.min(opening.sill_height ?? 0.9, visibleHeight);
           const openingTop = Math.min(sill + opening.height, visibleHeight);
           return (
             <group key={opening.id}>
@@ -205,27 +232,132 @@ function ReferenceFloor({ url, scene }: { url: string; scene: SceneManifest }) {
   );
 }
 
-function OpeningMarker({ opening, scene }: { opening: Opening; scene: SceneManifest }) {
+function WindowMarker({ opening, scene }: { opening: Opening; scene: SceneManifest }) {
   const [x, z] = opening.position;
   const rotation = THREE.MathUtils.degToRad(opening.rotation_deg);
-  const accent = scene.materials.accent;
-  if (opening.opening_type === 'window') {
-    return (
-      <mesh position={[x, 1.45, z]} rotation={[0, rotation, 0]}>
-        <boxGeometry args={[opening.width, 1.05, 0.035]} />
-        <meshPhysicalMaterial color="#72b7df" transparent opacity={0.38} roughness={0.08} transmission={0.6} thickness={0.02} />
+  const sill = opening.sill_height ?? 0.9;
+  const height = Math.min(opening.height, scene.wall_height_m - sill);
+  const bay = opening.opening_type === 'bay_window' || opening.opening_type === 'bow_window';
+  return (
+    <group position={[x, sill, z]} rotation={[0, rotation, 0]}>
+      <mesh position={[0, height / 2, bay ? 0.12 : 0]} castShadow>
+        <boxGeometry args={[opening.width, height, 0.035]} />
+        <meshPhysicalMaterial color="#72b7df" transparent opacity={0.34} roughness={0.08} transmission={0.65} thickness={0.02} />
       </mesh>
+      {bay ? (
+        <>
+          <mesh position={[-opening.width * 0.42, height / 2, 0.12]} rotation={[0, Math.PI / 7, 0]}><boxGeometry args={[opening.width * 0.24, height, 0.025]} /><meshPhysicalMaterial color="#72b7df" transparent opacity={0.3} /></mesh>
+          <mesh position={[opening.width * 0.42, height / 2, 0.12]} rotation={[0, -Math.PI / 7, 0]}><boxGeometry args={[opening.width * 0.24, height, 0.025]} /><meshPhysicalMaterial color="#72b7df" transparent opacity={0.3} /></mesh>
+        </>
+      ) : null}
+    </group>
+  );
+}
+
+function InteractiveDoor({ opening, scene, isOpen, onToggle }: {
+  opening: Opening;
+  scene: SceneManifest;
+  isOpen: boolean;
+  onToggle: () => void;
+}) {
+  const left = useRef<THREE.Group>(null);
+  const right = useRef<THREE.Group>(null);
+  const slider = useRef<THREE.Group>(null);
+  const revolving = useRef<THREE.Group>(null);
+  const overhead = useRef<THREE.Group>(null);
+  const progress = useRef(isOpen ? 1 : 0);
+  const [x, z] = opening.position;
+  const rotation = THREE.MathUtils.degToRad(opening.rotation_deg);
+  const width = Math.max(0.2, opening.width * 0.94);
+  const height = Math.min(opening.height, scene.wall_height_m);
+  const targetAngle = THREE.MathUtils.degToRad(opening.swing_angle_deg ?? 90);
+  const direction = opening.swing_direction === 'counterclockwise' ? -1 : 1;
+  const rightHinged = opening.hinge_side === 'right';
+
+  useEffect(() => {
+    progress.current = isOpen ? 1 : 0;
+  }, [opening.id]);
+
+  useFrame((_, delta) => {
+    progress.current = THREE.MathUtils.damp(progress.current, isOpen ? 1 : 0, 8, delta);
+    const value = progress.current;
+    if (left.current) left.current.rotation.y = direction * targetAngle * value;
+    if (right.current) right.current.rotation.y = -direction * targetAngle * value;
+    if (slider.current) slider.current.position.x = width * 0.48 * value;
+    if (revolving.current) revolving.current.rotation.y = Math.PI * 0.75 * value;
+    if (overhead.current) {
+      overhead.current.rotation.x = -Math.PI / 2 * value;
+      overhead.current.position.y = height * 0.48 * value;
+    }
+  });
+
+  const material = <meshStandardMaterial color={scene.materials.accent.hex_color} roughness={scene.materials.accent.roughness} metalness={scene.materials.accent.metallic} />;
+  const interactive = opening.interactive !== false;
+  const click = (event: { stopPropagation: () => void }) => {
+    event.stopPropagation();
+    if (interactive) onToggle();
+  };
+
+  if (opening.opening_type === 'open_passage') return null;
+
+  if (opening.opening_type === 'revolving_door') {
+    return (
+      <group position={[x, 0, z]} rotation={[0, rotation, 0]} onClick={click}>
+        <mesh position={[0, height / 2, 0]}><cylinderGeometry args={[width / 2, width / 2, height, 32, 1, true]} /><meshPhysicalMaterial color="#91c4db" transparent opacity={0.18} side={THREE.DoubleSide} /></mesh>
+        <group ref={revolving} position={[0, height / 2, 0]}>
+          <mesh>{material}<boxGeometry args={[width, height, 0.045]} /></mesh>
+          <mesh rotation={[0, Math.PI / 2, 0]}>{material}<boxGeometry args={[width, height, 0.045]} /></mesh>
+        </group>
+      </group>
     );
   }
-  if (opening.opening_type === 'open_passage') return null;
-  const leafWidth = Math.max(0.08, opening.width * 0.92);
-  const leafAngle = opening.swing_direction === 'counterclockwise' ? -Math.PI * 0.42 : Math.PI * 0.42;
+
+  if (opening.opening_type === 'overhead_door') {
+    return (
+      <group position={[x, 0, z]} rotation={[0, rotation, 0]} onClick={click}>
+        <group ref={overhead} position={[0, height / 2, 0]}>
+          <mesh castShadow><boxGeometry args={[width, height, 0.055]} />{material}</mesh>
+        </group>
+      </group>
+    );
+  }
+
+  if (SLIDING_TYPES.has(opening.opening_type)) {
+    const double = ['double_pocket_door', 'double_sliding_door', 'bypass_door'].includes(opening.opening_type);
+    return (
+      <group position={[x, 0, z]} rotation={[0, rotation, 0]} onClick={click}>
+        <group ref={slider}>
+          <mesh position={[double ? -width * 0.25 : 0, height / 2, 0]} castShadow><boxGeometry args={[double ? width / 2 : width, height, 0.045]} />{opening.opening_type === 'sliding_glass_door' ? <meshPhysicalMaterial color="#72b7df" transparent opacity={0.35} transmission={0.6} /> : material}</mesh>
+          {double ? <mesh position={[width * 0.25, height / 2, 0.04]} castShadow><boxGeometry args={[width / 2, height, 0.045]} />{material}</mesh> : null}
+        </group>
+      </group>
+    );
+  }
+
+  const double = opening.opening_type === 'double_door' || opening.opening_type === 'double_bifold_door';
+  const folding = FOLDING_TYPES.has(opening.opening_type);
+  const leafWidth = double ? width / 2 : width;
+  const openAngle = folding ? Math.min(targetAngle, Math.PI * 0.62) : targetAngle;
+
   return (
-    <group position={[x, 0, z]} rotation={[0, rotation, 0]}>
-      <mesh position={[leafWidth * 0.42, Math.min(opening.height, scene.wall_height_m) / 2, leafWidth * 0.38]} rotation={[0, leafAngle, 0]} castShadow>
-        <boxGeometry args={[leafWidth, Math.min(opening.height, scene.wall_height_m), 0.045]} />
-        <meshStandardMaterial color={accent.hex_color} roughness={accent.roughness} metalness={accent.metallic} />
-      </mesh>
+    <group position={[x, 0, z]} rotation={[0, rotation, 0]} onClick={click}>
+      {double ? (
+        <>
+          <group ref={left} position={[-width / 2, 0, 0]}>
+            <mesh position={[leafWidth / 2, height / 2, 0]} castShadow><boxGeometry args={[leafWidth, height, 0.045]} />{material}</mesh>
+          </group>
+          <group ref={right} position={[width / 2, 0, 0]}>
+            <mesh position={[-leafWidth / 2, height / 2, 0]} castShadow><boxGeometry args={[leafWidth, height, 0.045]} />{material}</mesh>
+          </group>
+        </>
+      ) : (
+        <group ref={left} position={[rightHinged ? width / 2 : -width / 2, 0, 0]}>
+          <mesh position={[rightHinged ? -width / 2 : width / 2, height / 2, 0]} castShadow>
+            <boxGeometry args={[width, height, 0.045]} />{material}
+          </mesh>
+        </group>
+      )}
+      {folding ? <group rotation={[0, direction * openAngle * progress.current, 0]} /> : null}
     </group>
   );
 }
@@ -297,9 +429,10 @@ function ResponsiveIsometricCamera({ scene }: { scene: SceneManifest }) {
   );
 }
 
-function pointInsidePassage(point: THREE.Vector2, wall: WallSegment, openings: Opening[]): boolean {
+function pointInsidePassage(point: THREE.Vector2, wall: WallSegment, openings: Opening[], openDoorIds: Set<string>): boolean {
   return openingsForWall(wall, openings).some(({ opening, centre }) => {
-    if (!['door', 'sliding_door', 'bifold_door', 'open_passage'].includes(opening.opening_type)) return false;
+    if (isWindow(opening)) return false;
+    if (opening.opening_type !== 'open_passage' && (!isDoor(opening) || !openDoorIds.has(opening.id))) return false;
     const start = new THREE.Vector2(wall.start[0], wall.start[1]);
     const end = new THREE.Vector2(wall.end[0], wall.end[1]);
     const vector = end.clone().sub(start);
@@ -311,7 +444,11 @@ function pointInsidePassage(point: THREE.Vector2, wall: WallSegment, openings: O
   });
 }
 
-function FirstPersonRig({ scene }: { scene: SceneManifest }) {
+function FirstPersonRig({ scene, openDoorIds, onToggleDoor }: {
+  scene: SceneManifest;
+  openDoorIds: Set<string>;
+  onToggleDoor: (openingId: string) => void;
+}) {
   const { camera } = useThree();
   const keys = useRef(new Set<string>());
   const velocity = useRef(new THREE.Vector3());
@@ -321,7 +458,25 @@ function FirstPersonRig({ scene }: { scene: SceneManifest }) {
   useEffect(() => {
     camera.position.set(...start);
     velocity.current.set(0, 0, 0);
-    const down = (event: KeyboardEvent) => keys.current.add(event.code);
+    const down = (event: KeyboardEvent) => {
+      keys.current.add(event.code);
+      if (event.code !== 'KeyE' || event.repeat) return;
+      const forward = new THREE.Vector3();
+      camera.getWorldDirection(forward);
+      forward.y = 0;
+      forward.normalize();
+      const candidates = scene.openings
+        .filter((opening) => isDoor(opening) && opening.interactive !== false)
+        .map((opening) => {
+          const vector = new THREE.Vector3(opening.position[0] - camera.position.x, 0, opening.position[1] - camera.position.z);
+          const distance = vector.length();
+          const facing = distance > 0 ? vector.normalize().dot(forward) : 1;
+          return { opening, distance, facing };
+        })
+        .filter((candidate) => candidate.distance <= 2.4 && candidate.facing >= 0.1)
+        .sort((a, b) => a.distance - b.distance);
+      if (candidates[0]) onToggleDoor(candidates[0].opening.id);
+    };
     const up = (event: KeyboardEvent) => keys.current.delete(event.code);
     window.addEventListener('keydown', down);
     window.addEventListener('keyup', up);
@@ -329,7 +484,7 @@ function FirstPersonRig({ scene }: { scene: SceneManifest }) {
       window.removeEventListener('keydown', down);
       window.removeEventListener('keyup', up);
     };
-  }, [camera, start[0], start[1], start[2]]);
+  }, [camera, scene.openings, onToggleDoor, start[0], start[1], start[2]]);
 
   useFrame((_, delta) => {
     const safeDelta = Math.min(delta, 0.05);
@@ -353,7 +508,7 @@ function FirstPersonRig({ scene }: { scene: SceneManifest }) {
     const point = new THREE.Vector2(proposed.x, proposed.z);
     const blocked = scene.walls.some((wall) => {
       if (distanceToSegment(point, wall.start, wall.end) >= wall.thickness / 2 + 0.23) return false;
-      return !pointInsidePassage(point, wall, scene.openings);
+      return !pointInsidePassage(point, wall, scene.openings, openDoorIds);
     });
     if (!blocked) {
       elapsed.current += safeDelta * Math.min(velocity.current.length(), 3.2);
@@ -372,6 +527,28 @@ function SceneContent({ scene, referenceUrl, view }: { scene: SceneManifest; ref
   const centreZ = scene.depth_m / 2;
   const largest = Math.max(scene.width_m, scene.depth_m, 4);
   const cutaway = view === 'isometric';
+  const [openDoorIds, setOpenDoorIds] = useState<Set<string>>(() => new Set(
+    scene.openings.filter((opening) => opening.default_open || opening.opening_type === 'open_passage').map((opening) => opening.id),
+  ));
+
+  useEffect(() => {
+    setOpenDoorIds((current) => {
+      const next = new Set([...current].filter((id) => scene.openings.some((opening) => opening.id === id)));
+      scene.openings.forEach((opening) => {
+        if (opening.default_open || opening.opening_type === 'open_passage') next.add(opening.id);
+      });
+      return next;
+    });
+  }, [scene.openings]);
+
+  const toggleDoor = (openingId: string) => {
+    setOpenDoorIds((current) => {
+      const next = new Set(current);
+      if (next.has(openingId)) next.delete(openingId); else next.add(openingId);
+      return next;
+    });
+  };
+
   return (
     <>
       <ambientLight intensity={view === 'walkthrough' ? 1.05 : 0.78} />
@@ -380,7 +557,9 @@ function SceneContent({ scene, referenceUrl, view }: { scene: SceneManifest; ref
       {referenceUrl && view === 'top' ? <ReferenceFloor url={referenceUrl} scene={scene} /> : null}
       {scene.rooms.map((room) => <RoomFloor key={room.id} polygon={room.polygon} scene={scene} />)}
       {scene.walls.map((wall) => <Wall key={wall.id} wall={wall} scene={scene} cutaway={cutaway} />)}
-      {scene.openings.map((opening) => <OpeningMarker key={opening.id} opening={opening} scene={scene} />)}
+      {scene.openings.map((opening) => isWindow(opening)
+        ? <WindowMarker key={opening.id} opening={opening} scene={scene} />
+        : <InteractiveDoor key={opening.id} opening={opening} scene={scene} isOpen={openDoorIds.has(opening.id)} onToggle={() => toggleDoor(opening.id)} />)}
       {scene.fixtures_and_furniture.map((item) => <ObjectMesh key={item.id} item={item} scene={scene} />)}
       {scene.assets.map((asset) => (
         <mesh key={asset.id} position={asset.position} rotation={[0, asset.rotation_y, 0]} castShadow receiveShadow>
@@ -394,7 +573,7 @@ function SceneContent({ scene, referenceUrl, view }: { scene: SceneManifest; ref
       ) : view === 'isometric' ? (
         <><ResponsiveIsometricCamera scene={scene} /><OrbitControls makeDefault target={[centreX, 0.7, centreZ]} enableDamping /></>
       ) : (
-        <><PerspectiveCamera makeDefault position={scene.first_person_start ?? [centreX, 1.7, centreZ]} fov={72} near={0.04} far={largest * 12} /><FirstPersonRig scene={scene} /></>
+        <><PerspectiveCamera makeDefault position={scene.first_person_start ?? [centreX, 1.7, centreZ]} fov={72} near={0.04} far={largest * 12} /><FirstPersonRig scene={scene} openDoorIds={openDoorIds} onToggleDoor={toggleDoor} /></>
       )}
     </>
   );
@@ -415,7 +594,10 @@ function DataSummary({ scene }: { scene: SceneManifest }) {
   return <pre className="scene-json-preview">{JSON.stringify(summary, null, 2)}</pre>;
 }
 
-export function ScenePreview({ project, busy, onAddRoom, onUpdateRoom, onDeleteRoom, onRenameRoom }: Props) {
+export function ScenePreview({
+  project, busy, onAddRoom, onUpdateRoom, onDeleteRoom, onRenameRoom,
+  onAddOpening, onUpdateOpening, onDeleteOpening,
+}: Props) {
   const scene = project?.scene;
   const [view, setView] = useState<ViewMode>('isometric');
   const structureUrl = absoluteUrl(scene?.detection_preview_url);
@@ -442,6 +624,7 @@ export function ScenePreview({ project, busy, onAddRoom, onUpdateRoom, onDeleteR
               <button className={view === 'top' ? 'active' : ''} onClick={() => setView('top')}><ScanLine size={15} /> Top plan</button>
               <button className={view === 'walkthrough' ? 'active' : ''} onClick={() => setView('walkthrough')}><Footprints size={15} /> First person</button>
               <button className={view === 'edit' ? 'active' : ''} onClick={() => setView('edit')}><Edit3 size={15} /> Edit rooms</button>
+              <button className={view === 'openings' ? 'active' : ''} onClick={() => setView('openings')}><DoorOpen size={15} /> Doors & windows</button>
               {structureUrl ? <button className={view === 'structure' ? 'active' : ''} onClick={() => setView('structure')}><Map size={15} /> Detection</button> : null}
               <button className={view === 'data' ? 'active' : ''} onClick={() => setView('data')}><Braces size={15} /> Data</button>
             </div>
@@ -449,12 +632,14 @@ export function ScenePreview({ project, busy, onAddRoom, onUpdateRoom, onDeleteR
           <span className="status-dot">{scene?.project_metadata.parser_version ?? 'No'} scene</span>
         </div>
       </div>
-      <div className={view === 'edit' ? 'canvas-wrap editor-canvas' : 'canvas-wrap'}>
+      <div className={view === 'edit' || view === 'openings' ? 'canvas-wrap editor-canvas' : 'canvas-wrap'}>
         {scene ? (
           view === 'structure' && structureUrl ? (
             <div className="structure-preview"><img src={structureUrl} alt="Detected walls, rooms, doors and windows" /><div><span className="green-key" /> Model/vector structure <span className="orange-key" /> Room boundaries</div></div>
           ) : view === 'edit' ? (
             <RoomLayoutEditor scene={scene} referenceUrl={referenceUrl} busy={busy} onAddRoom={onAddRoom} onUpdateRoom={onUpdateRoom} onDeleteRoom={onDeleteRoom} onRenameRoom={onRenameRoom} />
+          ) : view === 'openings' ? (
+            <OpeningEditor scene={scene} referenceUrl={referenceUrl} busy={busy} onAddOpening={onAddOpening} onUpdateOpening={onUpdateOpening} onDeleteOpening={onDeleteOpening} />
           ) : view === 'data' ? (
             <DataSummary scene={scene} />
           ) : (
@@ -464,7 +649,7 @@ export function ScenePreview({ project, busy, onAddRoom, onUpdateRoom, onDeleteR
                 {view === 'isometric' ? <fog attach="fog" args={['#0a1711', 35, 120]} /> : null}
                 <Suspense fallback={null}><SceneContent scene={scene} referenceUrl={referenceUrl} view={renderedView} /></Suspense>
               </Canvas>
-              {view === 'walkthrough' ? <div className="walkthrough-help"><strong>Click inside to look around</strong><span>WASD / arrows move · Shift runs · doors are traversable · Esc releases mouse</span></div> : null}
+              {view === 'walkthrough' ? <div className="walkthrough-help"><strong>Click inside to look around</strong><span>WASD / arrows move · Shift runs · E or click opens doors · Esc releases mouse</span></div> : null}
             </div>
           )
         ) : (
