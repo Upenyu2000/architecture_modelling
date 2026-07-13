@@ -2,6 +2,7 @@ import type {
   AssetCategory, Job, MaterialUpdate, ModelUnits, OpeningPayload, PlanType, Project, SaveSlot,
   SceneManifest, UpAxis, WallDetectionMode,
 } from '../types';
+import type { FurniturePayload, InteriorLibrary } from '../interior-types';
 
 export type AppSettingValue = string | boolean | number;
 
@@ -96,7 +97,10 @@ export const api = {
     const body = new FormData();
     body.append('file', file);
     body.append('label', file.name.replace(/\.[^.]+$/, ''));
-    return request<Project>(`/api/v1/projects/${id}/assets/${category}/${slot}`, { method: 'POST', body });
+    const route = category === 'flooring' || category === 'walls'
+      ? `/api/v1/projects/${id}/assets/${category}/${slot}`
+      : `/api/v1/projects/${id}/interior-assets/${category}/${slot}`;
+    return request<Project>(route, { method: 'POST', body });
   },
   analyze: (
     id: string,
@@ -187,6 +191,21 @@ export const api = {
     }),
   deleteOpening: (id: string, openingId: string) =>
     request<SceneManifest>(`/api/v1/projects/${id}/openings/${openingId}`, { method: 'DELETE' }),
+  interiorLibrary: () => request<InteriorLibrary>('/api/v1/interior-library'),
+  addFurniture: (id: string, furniture: FurniturePayload) =>
+    request<SceneManifest>(`/api/v1/projects/${id}/furniture`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(furniture),
+    }),
+  updateFurniture: (id: string, objectId: string, furniture: Partial<FurniturePayload>) =>
+    request<SceneManifest>(`/api/v1/projects/${id}/furniture/${objectId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(furniture),
+    }),
+  deleteFurniture: (id: string, objectId: string) =>
+    request<SceneManifest>(`/api/v1/projects/${id}/furniture/${objectId}`, { method: 'DELETE' }),
   render: (id: string, quality: 'preview' | '1080p' | '4k', engine: 'auto' | 'technical' | 'blender') =>
     request<Job>(`/api/v1/projects/${id}/render`, {
       method: 'POST',

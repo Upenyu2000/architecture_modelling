@@ -1,0 +1,33 @@
+.interior-editor { height: 100%; min-height: 610px; display: grid; grid-template-columns: minmax(0, 1fr) 330px; background: #07130e; }
+.interior-stage { position: relative; min-width: 0; margin: 12px; border: 1px solid #385845; border-radius: 10px; background: #e7ece8; overflow: hidden; }
+.interior-stage svg { width: 100%; height: 100%; display: block; touch-action: none; cursor: crosshair; user-select: none; }
+.interior-room { fill: rgba(57, 130, 88, .08); stroke: rgba(40, 91, 61, .5); stroke-width: .035; vector-effect: non-scaling-stroke; }
+.interior-room-label { fill: #2f4b3a; font-size: .25px; text-anchor: middle; dominant-baseline: central; pointer-events: none; paint-order: stroke; stroke: #fff; stroke-width: .045px; }
+.interior-footprint { cursor: pointer; }
+.interior-footprint rect { fill: rgba(48, 128, 82, .52); stroke: #174b2f; stroke-width: .045; vector-effect: non-scaling-stroke; }
+.interior-footprint text { fill: #10291a; font-size: .19px; text-anchor: middle; dominant-baseline: central; pointer-events: none; paint-order: stroke; stroke: #fff; stroke-width: .04px; }
+.interior-footprint:hover rect { fill: rgba(64, 159, 101, .66); }
+.interior-footprint.selected rect { fill: rgba(224, 169, 71, .7); stroke: #fff1c4; stroke-width: .08; }
+.interior-crosshair { pointer-events: none; }
+.interior-crosshair circle { fill: rgba(228, 76, 67, .25); stroke: #d94b43; stroke-width: .05; vector-effect: non-scaling-stroke; }
+.interior-crosshair line { stroke: #d94b43; stroke-width: .045; vector-effect: non-scaling-stroke; }
+.interior-stage-help { position: absolute; left: 12px; bottom: 12px; max-width: 520px; padding: 8px 11px; border: 1px solid rgba(42, 83, 59, .45); border-radius: 8px; background: rgba(246, 250, 247, .88); color: #2d4838; font-size: 11px; pointer-events: none; backdrop-filter: blur(7px); }
+.interior-controls { display: flex; flex-direction: column; gap: 10px; min-width: 0; padding: 14px; border-left: 1px solid #294938; background: #0a1c14; overflow-y: auto; }
+.interior-heading { display: flex; gap: 9px; align-items: flex-start; padding-bottom: 10px; border-bottom: 1px solid #294938; color: #d9efe1; }
+.interior-heading > div { display: grid; gap: 2px; }
+.interior-heading span { color: #789381; font-size: 11px; }
+.interior-controls label { display: grid; gap: 5px; color: #9ab4a3; font-size: 11px; }
+.interior-controls input, .interior-controls select { width: 100%; padding: 8px 9px; }
+.interior-controls input[type="color"] { height: 38px; padding: 3px; }
+.interior-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.interior-grid.three { grid-template-columns: repeat(3, 1fr); }
+.interior-reference { display: grid; gap: 6px; padding: 8px; border: 1px solid #355a45; border-radius: 9px; background: #081710; }
+.interior-reference img { width: 100%; height: 96px; object-fit: cover; border-radius: 6px; }
+.interior-reference span { display: flex; align-items: center; gap: 5px; color: #87a693; font-size: 10px; }
+.interior-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; padding-top: 4px; }
+.interior-actions .primary { grid-column: 1 / -1; margin: 0; }
+.interior-actions .secondary, .interior-actions .danger-icon { margin: 0; padding: 9px; border-radius: 8px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
+.interior-actions .danger-icon { border: 1px solid #7d4144; background: #35191c; color: #ffc2c5; }
+.interior-note { margin-top: auto; padding-top: 10px; border-top: 1px solid #294938; color: #738d7b; line-height: 1.45; }
+@media (max-width: 1500px) { .interior-editor { grid-template-columns: minmax(0, 1fr) 300px; } }
+@media (max-width: 1100px) { .interior-editor { grid-template-columns: 1fr; grid-template-rows: minmax(420px, 1fr) auto; } .interior-controls { border-left: 0; border-top: 1px solid #294938; } }

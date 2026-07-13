@@ -36,6 +36,8 @@ try {
     if ($LASTEXITCODE -ne 0) { throw "Free-form geometry smoke test failed." }
     & $Python -m tests.smoke_openings
     if ($LASTEXITCODE -ne 0) { throw "Interactive opening smoke test failed." }
+    & $Python -m tests.smoke_interiors
+    if ($LASTEXITCODE -ne 0) { throw "Interior design smoke test failed." }
 } finally {
     Pop-Location
 }
@@ -60,9 +62,12 @@ try {
         --hidden-import app.asgi `
         --hidden-import app.architecture_api `
         --hidden-import app.opening_api `
+        --hidden-import app.interior_api `
         --hidden-import app.services.architecture `
         --hidden-import app.services.openings `
         --hidden-import app.services.opening_symbols `
+        --hidden-import app.services.furniture_detection `
+        --hidden-import app.services.rendering_v15 `
         --hidden-import app.services.segmentation `
         --hidden-import app.services.training_data `
         --hidden-import app.services.drawings `
@@ -111,8 +116,8 @@ try {
             $Response = Invoke-WebRequest -UseBasicParsing -Uri "http://127.0.0.1:$TestPort/health" -TimeoutSec 2
             if ($Response.StatusCode -eq 200) {
                 $Payload = $Response.Content | ConvertFrom-Json
-                if ($Payload.version -ne "1.4.0") {
-                    throw "Packaged backend reported version $($Payload.version), expected 1.4.0."
+                if ($Payload.version -ne "1.5.0") {
+                    throw "Packaged backend reported version $($Payload.version), expected 1.5.0."
                 }
                 $Healthy = $true
                 break
@@ -139,5 +144,5 @@ if (-not $Healthy) {
 
 Remove-Item -Recurse -Force $TestData -ErrorAction SilentlyContinue
 Remove-Item -Force $StdOut, $StdErr -ErrorAction SilentlyContinue
-Write-Host "Packaged backend health check passed with version 1.4.0."
+Write-Host "Packaged backend health check passed with version 1.5.0."
 Write-Host "Backend built at backend\dist\dreamhome-ai.exe"

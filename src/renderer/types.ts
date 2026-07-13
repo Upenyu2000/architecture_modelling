@@ -1,4 +1,13 @@
-export type AssetCategory = 'flooring' | 'walls' | 'kitchen' | 'living_room' | 'bathroom';
+export type AssetCategory =
+  | 'flooring'
+  | 'walls'
+  | 'kitchen'
+  | 'living_room'
+  | 'bathroom'
+  | 'bedroom'
+  | 'dining_room'
+  | 'office'
+  | 'outdoor';
 export type WallDetectionMode = 'clean' | 'balanced' | 'detailed';
 export type PlanType = 'auto' | 'blueprint' | 'rendered';
 export type UpAxis = 'y' | 'z';
@@ -77,6 +86,11 @@ export interface OpeningPayload {
   opening_type: OpeningType;
   wall_id: string;
   placement_ratio: number;
+  position?: [number, number];
+  rotation_deg?: number;
+  snap_to_wall?: boolean;
+  plan_width_m?: number;
+  wall_height_m?: number;
   width?: number;
   height?: number;
   swing_direction: 'clockwise' | 'counterclockwise' | 'none';
@@ -89,7 +103,7 @@ export interface OpeningPayload {
 
 export interface SceneAsset {
   id: string;
-  category: AssetCategory;
+  category: AssetCategory | string;
   slot: string;
   label: string;
   room_id?: string | null;
@@ -97,7 +111,9 @@ export interface SceneAsset {
   rotation_y: number;
   size: [number, number, number];
   source_url?: string | null;
+  source_path?: string | null;
   mesh_url?: string | null;
+  mesh_path?: string | null;
   source: string;
   confidence: number;
 }
@@ -209,6 +225,18 @@ export interface DrawingSet {
   warnings: string[];
 }
 
+export interface ProjectAsset {
+  filename: string;
+  path?: string;
+  url: string;
+  category?: string;
+  slot?: string;
+  label?: string;
+  status: string;
+  mesh_path?: string | null;
+  mesh_url?: string | null;
+}
+
 export interface Project {
   id: string;
   name: string;
@@ -216,7 +244,7 @@ export interface Project {
   updated_at: string;
   floorplan?: { filename: string; preview_url: string; width_px?: number; height_px?: number } | null;
   building_model?: { filename: string; url: string; format: string; size_bytes: number } | null;
-  assets: Record<string, { filename: string; url: string; status: string }>;
+  assets: Record<string, ProjectAsset>;
   status: string;
   scene?: SceneManifest | null;
   drawing_set?: DrawingSet | null;
