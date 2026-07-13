@@ -6,10 +6,21 @@ import fs from 'node:fs';
 const BACKEND_HOST = '127.0.0.1';
 const BACKEND_PORT = 8765;
 let backendProcess: ChildProcessWithoutNullStreams | null = null;
+let backendFailure: string | null = null;
+let backendLogPath = '';
 let mainWindow: BrowserWindow | null = null;
 
 function backendUrl(): string {
   return `http://${BACKEND_HOST}:${BACKEND_PORT}`;
+}
+
+function appendBackendLog(message: string): void {
+  if (!backendLogPath) return;
+  try {
+    fs.appendFileSync(backendLogPath, `${new Date().toISOString()} ${message}\n`, 'utf8');
+  } catch {
+    // Logging must never prevent the application from starting.
+  }
 }
 
 function resolveBackendCommand(): { command: string; args: string[]; cwd: string } {
@@ -32,8 +43,18 @@ function resolveBackendCommand(): { command: string; args: string[]; cwd: string
 
 function startBackend(): void {
   const { command, args, cwd } = resolveBackendCommand();
-  const dataDir = path.join(app.getPath('userData'), 'data');
+  const userDataDir = app.getPath('userData');
+  const dataDir = path.join(userDataDir, 'data');
+  const logsDir = path.join(userDataDir, 'logs');
   fs.mkdirSync(dataDir, { recursive: true });
+  fs.mkdirSync(logsDir, { recursive: true });
+  backendLogPath = path.join(logsDir, 'backend.log');
+  backendFailure = null;
+  fs.writeFileSync(
+    backendLogPath,
+    `${new Date().toISOString()} Starting local AI service\nCommand: ${command} ${args.join(' ')}\nWorking directory: ${cwd}\n`,
+    'utf8',
+  );
 
   backendProcess = spawn(command, args, {
     cwd,
@@ -46,26 +67,49 @@ function startBackend(): void {
     },
   });
 
-  backendProcess.stdout.on('data', (data) => console.log(`[AI service] ${String(data).trim()}`));
-  backendProcess.stderr.on('data', (data) => console.error(`[AI service] ${String(data).trim()}`));
-  backendProcess.on('exit', (code) => {
-    console.log(`AI service exited with code ${code}`);
+  backendProcess.stdout.on('data', (data) => {
+    const message = String(data).trim();
+    console.log(`[AI service] ${message}`);
+    appendBackendLog(`[stdout] ${message}`);
+  });
+  backendProcess.stderr.on('data', (data) => {
+    const message = String(data).trim();
+    console.error(`[AI service] ${message}`);
+    appendBackendLog(`[stderr] ${message}`);
+  });
+  backendProcess.on('error', (error) => {
+    backendFailure = `The local AI service could not be launched: ${error.message}`;
+    appendBackendLog(`[spawn error] ${error.stack || error.message}`);
+  });
+  backendProcess.on('exit', (code, signal) => {
+    appendBackendLog(`[exit] code=${String(code)} signal=${String(signal)}`);
+    if (code !== 0 && backendFailure === null) {
+      backendFailure = `The local AI service exited unexpectedly with code ${String(code)}.`;
+    }
     backendProcess = null;
   });
 }
 
-async function waitForBackend(timeoutMs = 30000): Promise<void> {
+async function waitForBackend(timeoutMs = 90000): Promise<void> {
   const started = Date.now();
   while (Date.now() - started < timeoutMs) {
+    if (backendFailure) {
+      throw new Error(`${backendFailure}\n\nDiagnostic log:\n${backendLogPath}`);
+    }
     try {
       const response = await fetch(`${backendUrl()}/health`);
-      if (response.ok) return;
+      if (response.ok) {
+        appendBackendLog('[health] Local AI service is ready.');
+        return;
+      }
     } catch {
-      // Service is still starting.
+      // PyInstaller one-file applications can take time to unpack on first launch.
     }
-    await new Promise((resolve) => setTimeout(resolve, 400));
+    await new Promise((resolve) => setTimeout(resolve, 500));
   }
-  throw new Error('The local AI service did not start within 30 seconds.');
+  throw new Error(
+    `The local AI service did not start within 90 seconds.\n\nDiagnostic log:\n${backendLogPath}`,
+  );
 }
 
 async function createWindow(): Promise<void> {

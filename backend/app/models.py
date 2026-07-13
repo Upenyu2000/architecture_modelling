@@ -17,6 +17,14 @@ class FloorplanFile(BaseModel):
     height_px: int | None = None
 
 
+class BuildingModelFile(BaseModel):
+    filename: str
+    path: str
+    url: str
+    format: str
+    size_bytes: int
+
+
 class AssetFile(BaseModel):
     filename: str
     path: str
@@ -73,6 +81,28 @@ class SceneManifest(BaseModel):
     floor_texture_path: str | None = None
     wall_texture_url: str | None = None
     wall_texture_path: str | None = None
+    detection_preview_url: str | None = None
+    wall_detection_mode: str = "clean"
+    warnings: list[str] = Field(default_factory=list)
+
+
+class DrawingFile(BaseModel):
+    kind: str
+    format: str
+    filename: str
+    path: str
+    url: str
+
+
+class DrawingSet(BaseModel):
+    project_id: str
+    source_filename: str
+    created_at: str = Field(default_factory=utc_now)
+    slice_height_m: float
+    up_axis: Literal["y", "z"]
+    model_units: str
+    bounds_m: tuple[float, float, float]
+    files: list[DrawingFile] = Field(default_factory=list)
     warnings: list[str] = Field(default_factory=list)
 
 
@@ -82,19 +112,48 @@ class Project(BaseModel):
     created_at: str = Field(default_factory=utc_now)
     updated_at: str = Field(default_factory=utc_now)
     floorplan: FloorplanFile | None = None
+    building_model: BuildingModelFile | None = None
     assets: dict[str, AssetFile] = Field(default_factory=dict)
     status: str = "created"
     scene: SceneManifest | None = None
+    drawing_set: DrawingSet | None = None
 
 
 class CreateProjectRequest(BaseModel):
     name: str = "My Dream Home"
 
 
+class SaveSlotRequest(BaseModel):
+    name: str = Field(default="Saved Build", min_length=1, max_length=80)
+
+
+class SaveSlotSummary(BaseModel):
+    id: str
+    name: str
+    created_at: str
+    updated_at: str
+    status: str
+    floorplan_filename: str | None = None
+    building_model_filename: str | None = None
+    preview_url: str | None = None
+    asset_count: int = 0
+    has_scene: bool = False
+    has_drawings: bool = False
+
+
 class AnalyzeRequest(BaseModel):
     plan_width_m: float = Field(default=14.0, gt=1, le=500)
     wall_height_m: float = Field(default=2.8, ge=2.0, le=8.0)
     wall_thickness_m: float = Field(default=0.16, ge=0.05, le=1.0)
+    wall_detection: Literal["clean", "balanced", "detailed"] = "clean"
+    minimum_wall_length_m: float = Field(default=0.9, ge=0.3, le=10.0)
+
+
+class DrawingRequest(BaseModel):
+    slice_height_m: float = Field(default=1.2, ge=0.05, le=100.0)
+    up_axis: Literal["y", "z"] = "y"
+    model_units: Literal["auto", "metres", "millimetres", "centimetres", "feet"] = "auto"
+    include_dimensions: bool = True
 
 
 class RoomUpdateRequest(BaseModel):

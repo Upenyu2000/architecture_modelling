@@ -1,6 +1,9 @@
+import { useState } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { Grid, OrbitControls, PerspectiveCamera } from '@react-three/drei';
+import { Box, Map } from 'lucide-react';
 import * as THREE from 'three';
+import { absoluteUrl } from '../lib/api';
 import type { SceneManifest, WallSegment } from '../types';
 
 function Wall({ wall }: { wall: WallSegment }) {
@@ -51,22 +54,40 @@ function SceneContent({ scene }: { scene: SceneManifest }) {
 }
 
 export function ScenePreview({ scene }: { scene?: SceneManifest | null }) {
+  const [view, setView] = useState<'3d' | 'structure'>('3d');
+  const structureUrl = absoluteUrl(scene?.detection_preview_url);
+
   return (
     <section className="viewer-panel">
       <div className="viewer-header">
         <div>
           <span className="eyebrow">3. Live scene</span>
-          <h2>{scene ? `${scene.rooms.length} rooms · ${scene.walls.length} walls` : 'Waiting for analysis'}</h2>
+          <h2>{scene ? `${scene.rooms.length} rooms · ${scene.walls.length} structural walls` : 'Waiting for analysis'}</h2>
         </div>
-        <span className="status-dot">Deterministic geometry</span>
+        <div className="viewer-actions">
+          {scene && structureUrl ? (
+            <div className="view-switch">
+              <button className={view === '3d' ? 'active' : ''} onClick={() => setView('3d')}><Box size={15} /> 3D</button>
+              <button className={view === 'structure' ? 'active' : ''} onClick={() => setView('structure')}><Map size={15} /> Structure overlay</button>
+            </div>
+          ) : null}
+          <span className="status-dot">{scene?.wall_detection_mode ?? 'Deterministic'} geometry</span>
+        </div>
       </div>
       <div className="canvas-wrap">
         {scene ? (
-          <Canvas shadows dpr={[1, 2]} gl={{ preserveDrawingBuffer: true }}>
-            <color attach="background" args={['#0a1711']} />
-            <fog attach="fog" args={['#0a1711', 25, 90]} />
-            <SceneContent scene={scene} />
-          </Canvas>
+          view === 'structure' && structureUrl ? (
+            <div className="structure-preview">
+              <img src={structureUrl} alt="Detected structural wall centre lines and room boundaries" />
+              <div><span className="green-key" /> Structural wall centre lines <span className="orange-key" /> Room boundaries</div>
+            </div>
+          ) : (
+            <Canvas shadows dpr={[1, 2]} gl={{ preserveDrawingBuffer: true }}>
+              <color attach="background" args={['#0a1711']} />
+              <fog attach="fog" args={['#0a1711', 25, 90]} />
+              <SceneContent scene={scene} />
+            </Canvas>
+          )
         ) : (
           <div className="empty-view">
             <div className="wireframe-house" />
