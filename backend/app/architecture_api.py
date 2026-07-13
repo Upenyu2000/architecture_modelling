@@ -11,6 +11,7 @@ from .models import AnalyzeRequest, MaterialUpdateRequest, Opening, Project, Sce
 from .storage import load_project, project_dir, save_project, write_json
 from .services.architecture import compile_architecture, update_materials
 from .services.architecture_export import production_architecture_payload
+from .services.furniture_detection import detect_furniture_symbols, merge_furniture_objects
 from .services.opening_symbols import classify_opening_symbols
 from .services.openings import restore_manual_openings
 from .services.scene import apply_assets
@@ -80,6 +81,7 @@ def compile_project_architecture(project_id: str, request: AnalyzeRequest) -> Sc
         raise HTTPException(status_code=409, detail="The floor-plan preview is unavailable")
     try:
         manual_openings = [item.model_copy(deep=True) for item in project.scene.openings if item.source == "manual"]
+        user_furniture = [item.model_copy(deep=True) for item in project.scene.fixtures_and_furniture if item.source == "user"]
         vector_refined = add_diagonal_wall_candidates(project.scene, image_path)
         refined = refine_scene_with_model(vector_refined, image_path)
         learned_openings = [item.model_copy(deep=True) for item in refined.openings if item.source != "manual"]
@@ -87,7 +89,18 @@ def compile_project_architecture(project_id: str, request: AnalyzeRequest) -> Sc
         scene = classify_opening_symbols(scene, image_path)
         scene.openings = _merge_openings(learned_openings, scene.openings)
         scene = restore_manual_openings(scene, manual_openings)
+        detected_furniture = detect_furniture_symbols(scene, image_path) if request.auto_furnish else []
+        scene.fixtures_and_furniture = merge_furniture_objects(
+            user_furniture,
+            detected_furniture,
+            scene.fixtures_and_furniture if request.auto_furnish else [],
+        )
         scene.project_metadata.detected_openings = len(scene.openings)
+        scene.project_metadata.detected_objects = len(scene.fixtures_and_furniture)
+        if detected_furniture:
+            message = f"Detected {len(detected_furniture)} room-aware furniture footprint proposals. Verify or replace them in Interior Design."
+            if message not in scene.warnings:
+                scene.warnings.append(message)
     except Exception as exc:
         raise HTTPException(status_code=422, detail=f"Architectural compilation failed: {exc}")
     return _persist(project, scene, "architecture_compiled")
