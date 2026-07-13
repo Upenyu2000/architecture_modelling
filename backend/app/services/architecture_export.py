@@ -14,7 +14,7 @@ def _wall_for_opening(scene: SceneManifest, opening: Opening) -> tuple[WallSegme
     if opening.wall_id:
         matched = next((wall for wall in scene.walls if wall.id == opening.wall_id), None)
         if matched:
-            return matched, _placement_ratio(matched, opening.position)
+            return matched, opening.placement_ratio if opening.placement_ratio is not None else _placement_ratio(matched, opening.position)
     best: tuple[float, WallSegment] | None = None
     px, pz = opening.position
     for wall in scene.walls:
@@ -75,13 +75,19 @@ def production_architecture_payload(scene: SceneManifest) -> dict[str, Any]:
             "position": _vertex(opening.position),
             "width": opening.width,
             "height": opening.height,
+            "sill_height": opening.sill_height,
             "rotation_deg": opening.rotation_deg,
             "swing": opening.swing_direction,
+            "hinge_side": opening.hinge_side,
+            "swing_angle_deg": opening.swing_angle_deg,
+            "interactive": opening.interactive,
+            "default_open": opening.default_open,
+            "source": opening.source,
             "confidence": opening.confidence,
         })
 
     return {
-        "schema": "arch-ai-freeform-1.0",
+        "schema": "arch-ai-freeform-1.1",
         "project_metadata": {
             "project_id": scene.project_id,
             "scale_ratio": scene.project_metadata.scale_ratio,
@@ -168,6 +174,7 @@ def production_architecture_payload(scene: SceneManifest) -> dict[str, Any]:
                 "camera_path": [list(point) for point in scene.camera_path],
                 "collision_segments": [[_vertex(start), _vertex(end)] for start, end in scene.collision_segments],
                 "door_aware_collision": True,
+                "interaction_key": "E",
             },
         },
         "warnings": scene.warnings,
