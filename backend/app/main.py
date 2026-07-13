@@ -10,8 +10,9 @@ from fastapi.responses import FileResponse
 from .config import APP_NAME, PROJECTS_DIR, ensure_directories, load_settings, save_settings
 from .models import (
     AnalyzeRequest, AssetFile, BuildingModelFile, CreateProjectRequest, DrawingRequest,
-    FloorplanFile, Job, Project, RenderRequest, RoomUpdateRequest, SaveSlotRequest,
-    SaveSlotSummary, SceneManifest, WalkthroughRequest,
+    FloorplanFile, Job, ManualLayoutRequest, Project, RenderRequest, RoomCreateRequest,
+    RoomGeometryRequest, RoomUpdateRequest, SaveSlotRequest, SaveSlotSummary,
+    SceneManifest, WalkthroughRequest,
 )
 from .storage import (
     create_project, create_save_slot, delete_save_slot, list_save_slots, load_project,
@@ -20,11 +21,12 @@ from .storage import (
 from .services.drawings import generate_drawing_set
 from .services.floorplan import analyze_floorplan, rasterize_floorplan
 from .services.jobs import create_job, get_job, submit
+from .services.layout import add_room, delete_room, update_room_geometry
 from .services.providers import reconstruct_image_to_3d
 from .services.rendering import blender_render, technical_render
 from .services.scene import apply_assets
 
-app = FastAPI(title=f"{APP_NAME} Local API", version="1.1.0")
+app = FastAPI(title=f"{APP_NAME} Local API", version="1.2.0")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://127.0.0.1:5173", "http://localhost:5173", "null"],
@@ -42,9 +44,18 @@ def project_or_404(project_id: str) -> Project:
         raise HTTPException(status_code=404, detail="Project not found")
 
 
+def persist_scene(project: Project, scene: SceneManifest, status: str = "layout_updated") -> SceneManifest:
+    scene = apply_assets(scene, project.assets)
+    project.scene = scene
+    project.status = status
+    write_json(project_dir(project.id) / "working" / "scene.json", scene.model_dump(mode="json"))
+    save_project(project)
+    return scene
+
+
 @app.get("/health")
 def health() -> dict[str, Any]:
-    return {"status": "ok", "service": APP_NAME, "version": "1.1.0"}
+    return {"status": "ok", "service": APP_NAME, "version": "1.2.0"}
 
 
 @app.get("/api/v1/projects", response_model=list[Project])
@@ -237,6 +248,75 @@ def analyze(project_id: str, request: AnalyzeRequest) -> SceneManifest:
     return scene
 
 
+@app.post("/api/v1/projects/{project_id}/manual-layout", response_model=SceneManifest)
+def start_manual_layout(project_id: str, request: ManualLayoutRequest) -> SceneManifest:
+    project = project_or_404(project_id)
+    if not project.floorplan or not project.floorplan.width_px or not project.floorplan.height_px:
+        raise HTTPException(status_code=409, detail="Upload a floor plan before starting a manual layout")
+    depth_m = request.plan_width_m * project.floorplan.height_px / project.floorplan.width_px
+    rooms = [] if request.clear_existing or not project.scene else project.scene.rooms
+    scene = SceneManifest(
+        project_id=project_id,
+        width_m=round(request.plan_width_m, 3),
+        depth_m=round(depth_m, 3),
+        wall_height_m=request.wall_height_m,
+        walls=[] if request.clear_existing or not project.scene else project.scene.walls,
+        rooms=rooms,
+        assets=[],
+        camera_path=[],
+        reference_image_url=project.floorplan.preview_url,
+        reference_image_path=str(project_dir(project_id) / "working" / "floorplan.png"),
+        detection_preview_url=project.floorplan.preview_url,
+        wall_detection_mode="manual",
+        plan_type="rendered",
+        layout_mode="manual",
+        warnings=["Add rooms over the reference plan, then drag or resize them to match the building."],
+    )
+    if project.scene and project.scene.walls:
+        for wall in scene.walls:
+            wall.height = request.wall_height_m
+            wall.thickness = request.wall_thickness_m
+    return persist_scene(project, scene, "manual_layout")
+
+
+@app.post("/api/v1/projects/{project_id}/rooms", response_model=SceneManifest)
+def create_room(project_id: str, request: RoomCreateRequest) -> SceneManifest:
+    project = project_or_404(project_id)
+    if not project.scene:
+        raise HTTPException(status_code=409, detail="Start a manual layout or analyze the floor plan first")
+    try:
+        scene = add_room(project.scene, request)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+    return persist_scene(project, scene)
+
+
+@app.patch("/api/v1/projects/{project_id}/rooms/{room_id}/geometry", response_model=SceneManifest)
+def change_room_geometry(project_id: str, room_id: str, request: RoomGeometryRequest) -> SceneManifest:
+    project = project_or_404(project_id)
+    if not project.scene:
+        raise HTTPException(status_code=409, detail="Start a manual layout or analyze the floor plan first")
+    try:
+        scene = update_room_geometry(project.scene, room_id, request.polygon)
+    except KeyError:
+        raise HTTPException(status_code=404, detail="Room not found")
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+    return persist_scene(project, scene)
+
+
+@app.delete("/api/v1/projects/{project_id}/rooms/{room_id}", response_model=SceneManifest)
+def remove_room(project_id: str, room_id: str) -> SceneManifest:
+    project = project_or_404(project_id)
+    if not project.scene:
+        raise HTTPException(status_code=409, detail="Start a manual layout or analyze the floor plan first")
+    try:
+        scene = delete_room(project.scene, room_id)
+    except KeyError:
+        raise HTTPException(status_code=404, detail="Room not found")
+    return persist_scene(project, scene)
+
+
 @app.patch("/api/v1/projects/{project_id}/rooms/{room_id}", response_model=SceneManifest)
 def update_room(project_id: str, room_id: str, request: RoomUpdateRequest) -> SceneManifest:
     project = project_or_404(project_id)
@@ -246,17 +326,14 @@ def update_room(project_id: str, room_id: str, request: RoomUpdateRequest) -> Sc
     if not room:
         raise HTTPException(status_code=404, detail="Room not found")
     room.name = request.name
-    project.scene = apply_assets(project.scene, project.assets)
-    write_json(project_dir(project_id) / "working" / "scene.json", project.scene.model_dump(mode="json"))
-    save_project(project)
-    return project.scene
+    return persist_scene(project, project.scene)
 
 
 @app.post("/api/v1/projects/{project_id}/render", response_model=Job)
 def render(project_id: str, request: RenderRequest) -> Job:
     project = project_or_404(project_id)
     if not project.scene:
-        raise HTTPException(status_code=409, detail="Analyze the floor plan first")
+        raise HTTPException(status_code=409, detail="Analyze or create a room layout first")
     job = create_job(project_id, f"render_{request.quality}")
     output = project_dir(project_id) / "outputs" / f"render-{job.id[:8]}.png"
     scene_path = project_dir(project_id) / "working" / "scene.json"
@@ -280,7 +357,7 @@ def render(project_id: str, request: RenderRequest) -> Job:
 def walkthrough(project_id: str, request: WalkthroughRequest) -> Job:
     project = project_or_404(project_id)
     if not project.scene:
-        raise HTTPException(status_code=409, detail="Analyze the floor plan first")
+        raise HTTPException(status_code=409, detail="Analyze or create a room layout first")
     job = create_job(project_id, "video_walkthrough")
     output = project_dir(project_id) / "outputs" / f"walkthrough-{job.id[:8]}.mp4"
     scene_path = project_dir(project_id) / "working" / "scene.json"
