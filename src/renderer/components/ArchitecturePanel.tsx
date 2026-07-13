@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Boxes, BrainCircuit, Download, Palette, RefreshCw, ShieldCheck } from 'lucide-react';
+import { Boxes, BrainCircuit, Database, Download, Palette, RefreshCw, ShieldCheck } from 'lucide-react';
 import { api } from '../lib/api';
 import type { MaterialUpdate, Project, SceneManifest } from '../types';
 
@@ -67,6 +67,8 @@ export function ArchitecturePanel({ project, busy, onCompile, onApply }: Props) 
   const scene = project?.scene;
   const [settings, setSettings] = useState<MaterialUpdate>(() => fromScene(scene));
   const [useVision, setUseVision] = useState(false);
+  const [trainingMessage, setTrainingMessage] = useState('');
+  const [trainingBusy, setTrainingBusy] = useState(false);
 
   useEffect(() => setSettings(fromScene(scene)), [scene?.project_id, scene?.materials.palette_name, scene?.cutaway_height_m]);
 
@@ -79,6 +81,24 @@ export function ArchitecturePanel({ project, busy, onCompile, onApply }: Props) 
     setSettings((current) => ({ ...preset, cutaway_height_m: current.cutaway_height_m }));
   };
 
+  const addTrainingExample = async () => {
+    if (!project || !scene) return;
+    const confirmed = window.confirm(
+      'Add this floor plan and your corrected free-form room geometry to the local training workspace? Continue only if you own the plan or are authorised to use it for model training.',
+    );
+    if (!confirmed) return;
+    setTrainingBusy(true);
+    setTrainingMessage('');
+    try {
+      const exported = await api.exportTrainingExample(project.id);
+      setTrainingMessage(`Added to ${exported.split}: ${exported.workspace}`);
+    } catch (error) {
+      setTrainingMessage(error instanceof Error ? error.message : String(error));
+    } finally {
+      setTrainingBusy(false);
+    }
+  };
+
   const metadata = scene?.project_metadata;
 
   return (
@@ -88,7 +108,7 @@ export function ArchitecturePanel({ project, busy, onCompile, onApply }: Props) 
         <BrainCircuit size={22} />
       </div>
       <p className="panel-copy">
-        Compile walls, room dimensions, openings, procedural fixtures, collision geometry and synchronized camera data into one exportable scene.
+        Compile free-form room polygons, walls, dimensions, openings, procedural fixtures, collision geometry and synchronized camera data into one exportable scene.
       </p>
 
       {metadata ? (
@@ -140,6 +160,16 @@ export function ArchitecturePanel({ project, busy, onCompile, onApply }: Props) 
       <button className="secondary full-width" disabled={busy || !scene} onClick={() => void onApply(settings)}>
         <Boxes size={17} /> Apply palette and cutaway
       </button>
+
+      {scene ? (
+        <div className="training-export-card">
+          <div><Database size={18} /><span><strong>Continuous learning</strong><small>After correcting every room vertex, export this plan as a supervised local training example.</small></span></div>
+          <button className="secondary" disabled={busy || trainingBusy || !project?.floorplan || scene.rooms.length === 0} onClick={() => void addTrainingExample()}>
+            <Database size={15} /> {trainingBusy ? 'Exporting…' : 'Add corrected plan to training set'}
+          </button>
+          {trainingMessage ? <small className="training-export-message">{trainingMessage}</small> : null}
+        </div>
+      ) : null}
 
       {scene ? (
         <div className="architecture-actions">

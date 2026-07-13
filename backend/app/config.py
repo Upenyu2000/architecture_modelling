@@ -20,6 +20,10 @@ DEFAULT_SETTINGS: dict[str, Any] = {
     "vision_endpoint": "",
     "vision_token": "",
     "vision_model": "custom-multimodal-parser",
+    "segmentation_model_path": "",
+    "segmentation_input_size": 512,
+    "segmentation_threshold": 0.5,
+    "training_workspace": "",
     "allow_remote_processing": False,
 }
 

@@ -176,8 +176,8 @@ def blender_render(scene_path: Path, output: Path, quality: str, mode: str, seco
     blender = find_blender()
     if not blender:
         raise RuntimeError("Blender was not found. Install Blender 4.x or choose its blender.exe in Settings.")
-    script = Path(__file__).resolve().parent.parent / "blender" / "generate_scene.py"
-    progress(8, "Starting Blender in background mode")
+    script = Path(__file__).resolve().parent.parent / "blender" / "generate_scene_v2.py"
+    progress(8, "Starting opening-aware PBR Blender scene")
     command = [
         blender, "--background", "--python", str(script), "--",
         "--scene", str(scene_path), "--output", str(output), "--quality", quality,

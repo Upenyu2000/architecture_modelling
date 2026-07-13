@@ -1,0 +1,116 @@
+{
+  "schema_version": 1,
+  "classes": ["background", "wall", "room", "door", "window"],
+  "sources": [
+    {
+      "id": "local_user_seed",
+      "name": "User-supplied floor-plan seed images",
+      "source_url": null,
+      "purpose": ["wall segmentation", "room-region segmentation", "domain adaptation"],
+      "license": "user-controlled",
+      "commercial_use": "depends_on_user_rights",
+      "download_method": "training/prepare_dataset.py --source local",
+      "enabled_by_default": true,
+      "notes": "Only import images that the user owns or is authorised to use. Weak masks must be reviewed before production training."
+    },
+    {
+      "id": "figshare_epsap_2500",
+      "name": "Dataset of 2500 synthetic single-family floor plans T0-T4",
+      "source_url": "https://figshare.com/articles/dataset/28282802",
+      "purpose": ["wall segmentation", "room segmentation", "irregular layout diversity"],
+      "license": "CC BY 4.0",
+      "commercial_use": "allowed_with_attribution",
+      "download_method": "training/prepare_dataset.py --source figshare",
+      "enabled_by_default": true,
+      "notes": "The dataset provides matching black-and-white and room-colour plans. Preserve attribution in trained-model documentation."
+    },
+    {
+      "id": "roboflow_floor_plans_500",
+      "name": "Floor Plans 500",
+      "source_url": "https://universe.roboflow.com/university-y9nbi/floor-plans-500",
+      "purpose": ["door detection", "window detection", "zone detection"],
+      "license": "CC BY 4.0",
+      "commercial_use": "allowed_with_attribution",
+      "download_method": "Export COCO instance segmentation/object detection, then use --source coco",
+      "enabled_by_default": true,
+      "notes": "Contains 402 images and door, window and zone classes. An API key may be required for programmatic export."
+    },
+    {
+      "id": "pseudo_floor_plan_12k",
+      "name": "pseudo-floor-plan-12k",
+      "source_url": "https://huggingface.co/datasets/zimhe/pseudo-floor-plan-12k",
+      "purpose": ["synthetic augmentation", "wall masks", "room colour masks", "caption supervision"],
+      "license": "not_declared_on_dataset_card",
+      "commercial_use": "blocked_until_verified",
+      "download_method": "training/prepare_dataset.py --source pseudo12k --accept-unverified-license",
+      "enabled_by_default": false,
+      "notes": "The dataset card exposes 12,000 rows with plan, wall, colour and footprint images but does not declare a licence. Do not use for a commercial model until the owner confirms terms."
+    },
+    {
+      "id": "floorplancad",
+      "name": "FloorPlanCAD",
+      "source_url": "https://huggingface.co/datasets/Voxel51/FloorPlanCAD",
+      "purpose": ["panoptic symbol spotting", "CAD primitive segmentation", "doors/windows/furniture"],
+      "license": "CC BY-NC 4.0 for annotations; drawing copyright not owned by dataset authors",
+      "commercial_use": "not_allowed",
+      "download_method": "Use FiftyOne or the project download and convert to COCO locally",
+      "enabled_by_default": false,
+      "notes": "Keep this source in a research-only experiment. It must not be mixed into a commercial model checkpoint."
+    },
+    {
+      "id": "msd",
+      "name": "Modified Swiss Dwellings (MSD)",
+      "source_url": "https://github.com/caspervanengelenburg/msd",
+      "purpose": ["multi-unit geometry", "room adjacency graphs", "non-trivial layouts"],
+      "license": "verify Kaggle dataset terms before use",
+      "commercial_use": "blocked_until_verified",
+      "download_method": "Download from the Kaggle link in the MSD repository, then use --source vector-json or a custom adapter",
+      "enabled_by_default": false,
+      "notes": "The repository states that code and data are open, but the downloaded dataset licence must be recorded in the workspace before training."
+    },
+    {
+      "id": "resplan",
+      "name": "ResPlan",
+      "source_url": "https://arxiv.org/abs/2508.14006",
+      "purpose": ["free-form polygons", "vector graphs", "room labelling", "3D reconstruction"],
+      "license": "paper states permissive open-source release; verify release package licence",
+      "commercial_use": "blocked_until_verified",
+      "download_method": "Import the published JSON/vector release with --source vector-json when the official package is available",
+      "enabled_by_default": false,
+      "notes": "The paper describes 17,000 vector and graph plans including irregular rooms, but the exact release licence file must be captured before commercial training."
+    },
+    {
+      "id": "floor_plan_lora",
+      "name": "Floor_Plan_LoRA",
+      "source_url": "https://huggingface.co/maria26/Floor_Plan_LoRA",
+      "purpose": ["text-to-floor-plan generation", "synthetic augmentation"],
+      "license": "Microsoft Public License",
+      "commercial_use": "review_base_model_and_output_terms",
+      "download_method": "Optional offline Diffusers augmentation; not used by the detector runtime",
+      "enabled_by_default": false,
+      "notes": "This is a generative Stable Diffusion LoRA, not a geometry detector. Generated samples must be validated before inclusion."
+    },
+    {
+      "id": "floorplan_vision_adapter",
+      "name": "FloorPlanVisionAIAdaptor",
+      "source_url": "https://huggingface.co/sabaridsnfuji/FloorPlanVisionAIAdaptor",
+      "purpose": ["semantic descriptions", "room labels", "dimension reasoning"],
+      "license": "not_declared_on_model_card",
+      "commercial_use": "blocked_until_verified",
+      "download_method": "Optional private VLM endpoint only",
+      "enabled_by_default": false,
+      "notes": "The model card notes limitations on unconventional layouts and does not provide a traceable training-data licence. It is not bundled."
+    },
+    {
+      "id": "rasterscan_adapter",
+      "name": "RasterScan recognition service",
+      "source_url": "https://huggingface.co/spaces/RasterScan/Automated-Floor-Plan-Digitalization",
+      "purpose": ["optional raster-to-vector API comparison"],
+      "license": "service terms apply",
+      "commercial_use": "requires_vendor_terms",
+      "download_method": "Configure a private endpoint or vendor Docker image separately",
+      "enabled_by_default": false,
+      "notes": "The public Space forwards images to a backend API and does not expose the recognition implementation. No proprietary backend code is copied into this repository."
+    }
+  ]
+}

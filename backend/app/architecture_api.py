@@ -1,16 +1,26 @@
 from __future__ import annotations
 
+import math
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse
+from pydantic import BaseModel
 
-from .models import AnalyzeRequest, MaterialUpdateRequest, Project, SceneManifest
+from .models import AnalyzeRequest, MaterialUpdateRequest, Opening, Project, SceneManifest
 from .storage import load_project, project_dir, save_project, write_json
 from .services.architecture import compile_architecture, update_materials
+from .services.architecture_export import production_architecture_payload
 from .services.scene import apply_assets
+from .services.segmentation import refine_scene_with_model
+from .services.training_data import export_corrected_training_example
+from .services.vector_refinement import add_diagonal_wall_candidates
 
 router = APIRouter(prefix="/api/v1")
+
+
+class TrainingExampleRequest(BaseModel):
+    confirmed_rights: bool = False
 
 
 def _project(project_id: str) -> Project:
@@ -25,14 +35,31 @@ def _persist(project: Project, scene: SceneManifest, status: str) -> SceneManife
     scene.project_metadata.detected_objects = len(scene.fixtures_and_furniture) + len(scene.assets)
     scene.project_metadata.detected_openings = len(scene.openings)
     scene.project_metadata.detected_rooms = len(scene.rooms)
-    target = project_dir(project.id) / "working" / "architecture.json"
+    working = project_dir(project.id) / "working"
+    scene_path = working / "scene.json"
+    export_path = working / "architecture.json"
     scene.architecture_json_url = f"/api/v1/projects/{project.id}/architecture.json"
-    write_json(target, scene.model_dump(mode="json"))
-    write_json(project_dir(project.id) / "working" / "scene.json", scene.model_dump(mode="json"))
+    write_json(scene_path, scene.model_dump(mode="json"))
+    write_json(export_path, production_architecture_payload(scene))
     project.scene = scene
     project.status = status
     save_project(project)
     return scene
+
+
+def _merge_openings(primary: list[Opening], secondary: list[Opening]) -> list[Opening]:
+    merged: list[Opening] = []
+    for opening in [*primary, *secondary]:
+        duplicate = next((
+            item for item in merged
+            if item.opening_type == opening.opening_type
+            and math.dist(item.position, opening.position) <= max(0.3, min(item.width, opening.width) * 0.45)
+        ), None)
+        if duplicate is None:
+            merged.append(opening)
+        elif opening.confidence > duplicate.confidence:
+            merged[merged.index(duplicate)] = opening
+    return merged[:120]
 
 
 @router.post("/projects/{project_id}/compile-architecture", response_model=SceneManifest)
@@ -46,10 +73,30 @@ def compile_project_architecture(project_id: str, request: AnalyzeRequest) -> Sc
     if not image_path.exists():
         raise HTTPException(status_code=409, detail="The floor-plan preview is unavailable")
     try:
-        scene = compile_architecture(project.scene, image_path, request)
+        vector_refined = add_diagonal_wall_candidates(project.scene, image_path)
+        refined = refine_scene_with_model(vector_refined, image_path)
+        learned_openings = list(refined.openings)
+        scene = compile_architecture(refined, image_path, request)
+        if learned_openings:
+            scene.openings = _merge_openings(learned_openings, scene.openings)
+            scene.project_metadata.detected_openings = len(scene.openings)
     except Exception as exc:
         raise HTTPException(status_code=422, detail=f"Architectural compilation failed: {exc}")
     return _persist(project, scene, "architecture_compiled")
+
+
+@router.post("/projects/{project_id}/training-example")
+def create_training_example(project_id: str, request: TrainingExampleRequest) -> dict[str, object]:
+    project = _project(project_id)
+    if not request.confirmed_rights:
+        raise HTTPException(status_code=400, detail="Confirm that you own or are authorised to use this plan for model training.")
+    if not project.floorplan or not project.scene:
+        raise HTTPException(status_code=409, detail="Upload a plan and confirm its room geometry first.")
+    image_path = project_dir(project_id) / "working" / "floorplan.png"
+    try:
+        return export_corrected_training_example(project, image_path)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
 
 
 @router.put("/projects/{project_id}/materials", response_model=SceneManifest)
@@ -77,5 +124,5 @@ def download_architecture_json(project_id: str):
     if not project.scene:
         raise HTTPException(status_code=409, detail="Compile the architectural scene first")
     target = project_dir(project_id) / "working" / "architecture.json"
-    write_json(target, project.scene.model_dump(mode="json"))
+    write_json(target, production_architecture_payload(project.scene))
     return FileResponse(target, filename=f"{project.name.replace(' ', '-')}-architecture.json", media_type="application/json")

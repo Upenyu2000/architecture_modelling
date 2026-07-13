@@ -1,38 +1,76 @@
 # Dream Home Visualizer — Standalone Windows App
 
-A local-first Electron + Python desktop application that converts a 2D floor plan into a deterministic 3D house scene, maps user-uploaded materials and furniture, produces HD/4K renders, generates a Blender MP4 walkthrough, and converts uploaded 3D building models back into measured 2D drawing sets.
+A local-first Electron + Python desktop application that converts 2D floor plans into editable free-form architectural geometry, compiles synchronized cutaway and first-person 3D environments, maps PBR materials, creates HD/4K Blender output, generates walkthrough videos, and converts uploaded 3D building models back into measured 2D drawing sets.
 
 ## What works in the repository
 
 - Windows NSIS installer built with Electron Builder.
 - PNG, JPG and PDF floor-plan ingestion.
 - Clean structural centre-line extraction that suppresses text, furniture symbols and duplicate wall edges.
-- Clean, Balanced and Detailed wall-detection modes plus a minimum wall-length control.
-- Structure overlay showing the exact wall lines and room boundaries used by the 3D scene.
-- User-controlled real-world scale and wall height.
+- Optional local ONNX semantic segmentation for walls, rooms, doors and windows.
+- Free-form room polygons with up to 64 editable vertices.
+- Add, remove and drag individual room points; create rhombus, trapezoid, L-shaped, octagonal and irregular rooms.
+- Room move/scale controls, configurable snapping and an aligned plan-reference layer.
+- Validation that rejects self-crossing or overlapping polygon edges.
+- Shared, diagonal and exterior walls rebuilt from confirmed room boundaries.
+- Clean, Balanced and Detailed deterministic detection modes plus minimum wall-length control.
+- Structure/model overlay showing the geometry used by the 3D scene.
+- User-controlled scale, wall height, cutaway height and material properties.
 - Flooring, wall, kitchen, living-room and bathroom upload tabs.
-- Deterministic asset placement with a live Three.js scene preview.
+- Deterministic asset placement with a live Three.js cutaway and top-plan scene.
+- Door/window gaps cut into wall geometry rather than painted over solid walls.
+- First-person pointer-lock movement with acceleration, running, head motion and door-aware collision.
+- PBR roughness/metalness plus optional diffuse and normal maps in Three.js.
+- Opening-aware Blender wall generation, box/triplanar texture projection and window bounce lighting.
 - GLB, OBJ, STL and PLY building-model uploads for reverse 3D-to-2D conversion.
-- Floor-plan sectioning at a configurable cut height and Y-up or Z-up axis selection.
-- PNG, SVG and DXF floor plans, front and side elevation drawings, dimensions and a ZIP drawing package.
+- Floor-plan sectioning at a configurable cut height and Y-up or Z-up selection.
+- PNG, SVG and DXF floor plans, front/side elevations, dimensions and a ZIP drawing package.
 - Persistent named save slots for uploads, geometry, drawings, renders and walkthroughs.
 - Reset control that clears the active project without deleting save slots.
 - Local project storage under the Windows application-data directory.
 - Fast technical PNG renders at preview, 1080p and 4K.
-- Blender 4.x background rendering and 5–30 second MP4 walkthroughs.
+- Blender 4.2+ background rendering and 5–30 second MP4 walkthroughs.
 - Optional command adapter for local TRELLIS or Hunyuan3D environments.
 - Optional private remote endpoint adapter; remote upload is disabled by default.
-- GitHub Actions workflow that builds the Windows installer.
+- Corrected-project export to a local supervised training workspace.
+- Licence-aware dataset preparation, PyTorch U-Net training, validation metrics and ONNX export.
+- GitHub Actions validation for Python, Blender scripts, TypeScript, backend packaging and Windows installer creation.
+
+## Floor-plan AI training
+
+The normal Windows installer does not bundle PyTorch or third-party datasets. Training is isolated under `training/` so model development does not make the desktop installer several gigabytes.
+
+The training pipeline supports:
+
+- User-owned local seed plans.
+- The CC BY 4.0 Figshare synthetic floor-plan release.
+- Authorised COCO exports such as Floor Plans 500.
+- Vector/graph JSON with arbitrary room polygons.
+- Explicitly gated research sources whose licences are missing, non-commercial or require separate verification.
+
+It produces a five-class semantic model:
+
+```text
+background, wall, room, door, window
+```
+
+The resulting `floorplan-segmentation.onnx` file can be selected under **AI, OCR, training and render settings**. See [`training/README.md`](training/README.md) and [`training/datasets.json`](training/datasets.json).
+
+After manually correcting a plan in **Edit rooms**, use **Add corrected plan to training set** to write the source image, class mask and authoritative scene JSON into the configured training workspace. This action requires confirmation that the plan may lawfully be used for training.
 
 ## Important production boundary
 
-The desktop application and the deterministic geometry pipeline are self-contained. Large generative models such as TRELLIS, Hunyuan3D, Stable Diffusion/ControlNet, Real-ESRGAN and video diffusion are not embedded in the installer because their model weights, CUDA requirements and licences make a normal Windows package impractical. The app exposes explicit local-command and private-endpoint adapters for those models and never uploads a user's home plan without a deliberate setting.
+The deterministic geometry pipeline and optional ONNX inference are self-contained. Large generative models such as TRELLIS, Hunyuan3D, Stable Diffusion/ControlNet, Real-ESRGAN and video diffusion are not embedded because their weights, CUDA requirements and licences make a normal Windows installer impractical. The app exposes local-command and private-endpoint adapters and never uploads a home plan without explicit consent.
 
-The reverse drawing workflow uses deterministic mesh cross-sections rather than an image-generation model. GLB is the preferred single-file model format. OBJ models that depend on separate MTL or texture files can still be sectioned, but their external materials are not needed for technical drawings.
+The application does not silently redistribute third-party datasets. FloorPlanCAD is non-commercial, some Hugging Face resources do not declare a licence, and MSD/ResPlan release terms must be retained and verified before a checkpoint is used commercially. The source registry enforces these boundaries.
+
+The reverse drawing workflow uses deterministic mesh cross-sections rather than image generation. GLB is the preferred single-file format. OBJ models that depend on separate MTL or texture files can still be sectioned; those materials are not required for technical drawings.
+
+This is an architectural visualisation and data-preparation tool, not a substitute for a licensed architect, structural engineer, building surveyor or code-compliance review.
 
 ## Build on Windows
 
-Install Node.js 22+, Python 3.11+, and optionally Blender 4.x. Then run:
+Install Node.js 22+, Python 3.11+, and optionally Blender 4.2 or newer. Then run:
 
 ```powershell
 Set-ExecutionPolicy -Scope Process Bypass
@@ -55,13 +93,14 @@ npm run dev
 
 | Stage | Default in this build | Optional production model |
 |---|---|---|
-| Floor-plan parsing | Directional morphology, wall centre lines, thickness filtering and closed-room contours | Fine-tuned YOLOv8-seg or Mask2Former blueprint model |
-| Text and scale | Manual width calibration | PaddleOCR/Surya plus dimension-line parser |
-| Furniture reconstruction | Deterministic proxy geometry | TRELLIS or Hunyuan3D 2.x in a dedicated CUDA environment |
-| Scene assembly | Three.js preview + Blender Python | Blender Geometry Nodes/Cycles |
-| 3D-to-2D drawings | Trimesh cross-sections with PNG/SVG/DXF exports | BIM/IFC semantic extraction for construction-document detail |
-| Texture conditioning | Original user swatches | SDXL/Flux ControlNet depth with IP-Adapter reference conditioning |
-| Upscaling | Native 1080p/4K render target | Real-ESRGAN or a latent upscaler |
-| Walkthrough | Blender camera path, H.264 MP4 | Video diffusion only as a post-process, never as geometry authority |
+| Floor-plan parsing | OpenCV vectors plus optional local 5-class ONNX segmentation | Mask2Former/SegFormer trained on licence-compatible architectural masks |
+| Free-form topology | Shapely polygon validation, shared-edge reconstruction and editable vertices | Graph neural topology correction trained on verified vector datasets |
+| Text and scale | Manual calibration plus optional Tesseract OCR | PaddleOCR/Surya and a dimension-line parser |
+| Furniture reconstruction | Deterministic proxy geometry | TRELLIS or Hunyuan3D in a dedicated CUDA environment |
+| Scene assembly | Three.js game viewport plus Blender Python | Blender Geometry Nodes/Cycles or Unity/Unreal integration |
+| 3D-to-2D drawings | Trimesh cross-sections with PNG/SVG/DXF | BIM/IFC semantic extraction for construction documents |
+| Texture mapping | PBR material parameters, user maps and box/triplanar projection | Material synthesis with reviewed, licensed texture datasets |
+| Upscaling | Native 1080p/4K render target | Real-ESRGAN or latent upscaler |
+| Walkthrough | Collision-aware live FPS and Blender camera-path MP4 | Video diffusion only as post-processing, never as geometry authority |
 
-See [Architecture](docs/ARCHITECTURE.md), [API](docs/API.md), and [AI model setup](docs/MODEL_SETUP.md).
+See [Architecture](docs/ARCHITECTURE.md), [API](docs/API.md), [AI model setup](docs/MODEL_SETUP.md), and [Training](training/README.md).
