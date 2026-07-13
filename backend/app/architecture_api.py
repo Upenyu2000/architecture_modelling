@@ -1,14 +1,16 @@
 from __future__ import annotations
 
+import math
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse
 
-from .models import AnalyzeRequest, MaterialUpdateRequest, Project, SceneManifest
+from .models import AnalyzeRequest, MaterialUpdateRequest, Opening, Project, SceneManifest
 from .storage import load_project, project_dir, save_project, write_json
 from .services.architecture import compile_architecture, update_materials
 from .services.scene import apply_assets
+from .services.segmentation import refine_scene_with_model
 
 router = APIRouter(prefix="/api/v1")
 
@@ -35,6 +37,21 @@ def _persist(project: Project, scene: SceneManifest, status: str) -> SceneManife
     return scene
 
 
+def _merge_openings(primary: list[Opening], secondary: list[Opening]) -> list[Opening]:
+    merged: list[Opening] = []
+    for opening in [*primary, *secondary]:
+        duplicate = next((
+            item for item in merged
+            if item.opening_type == opening.opening_type
+            and math.dist(item.position, opening.position) <= max(0.3, min(item.width, opening.width) * 0.45)
+        ), None)
+        if duplicate is None:
+            merged.append(opening)
+        elif opening.confidence > duplicate.confidence:
+            merged[merged.index(duplicate)] = opening
+    return merged[:120]
+
+
 @router.post("/projects/{project_id}/compile-architecture", response_model=SceneManifest)
 def compile_project_architecture(project_id: str, request: AnalyzeRequest) -> SceneManifest:
     project = _project(project_id)
@@ -46,7 +63,12 @@ def compile_project_architecture(project_id: str, request: AnalyzeRequest) -> Sc
     if not image_path.exists():
         raise HTTPException(status_code=409, detail="The floor-plan preview is unavailable")
     try:
-        scene = compile_architecture(project.scene, image_path, request)
+        refined = refine_scene_with_model(project.scene, image_path)
+        learned_openings = list(refined.openings)
+        scene = compile_architecture(refined, image_path, request)
+        if learned_openings:
+            scene.openings = _merge_openings(learned_openings, scene.openings)
+            scene.project_metadata.detected_openings = len(scene.openings)
     except Exception as exc:
         raise HTTPException(status_code=422, detail=f"Architectural compilation failed: {exc}")
     return _persist(project, scene, "architecture_compiled")
