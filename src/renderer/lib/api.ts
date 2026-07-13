@@ -1,4 +1,6 @@
-import type { AssetCategory, Job, Project, SaveSlot, SceneManifest } from '../types';
+import type {
+  AssetCategory, Job, ModelUnits, Project, SaveSlot, SceneManifest, UpAxis, WallDetectionMode,
+} from '../types';
 
 let cachedBaseUrl = 'http://127.0.0.1:8765';
 
@@ -29,10 +31,8 @@ export const api = {
       body: JSON.stringify({ name }),
     }),
   getProject: (id: string) => request<Project>(`/api/v1/projects/${id}`),
-  resetProject: (id: string) =>
-    request<Project>(`/api/v1/projects/${id}/reset`, { method: 'POST' }),
-  listSaveSlots: (id: string) =>
-    request<SaveSlot[]>(`/api/v1/projects/${id}/save-slots`),
+  resetProject: (id: string) => request<Project>(`/api/v1/projects/${id}/reset`, { method: 'POST' }),
+  listSaveSlots: (id: string) => request<SaveSlot[]>(`/api/v1/projects/${id}/save-slots`),
   createSaveSlot: (id: string, name: string) =>
     request<SaveSlot>(`/api/v1/projects/${id}/save-slots`, {
       method: 'POST',
@@ -48,18 +48,49 @@ export const api = {
     body.append('file', file);
     return request<Project>(`/api/v1/projects/${id}/floorplan`, { method: 'POST', body });
   },
+  uploadBuildingModel: async (id: string, file: File) => {
+    const body = new FormData();
+    body.append('file', file);
+    return request<Project>(`/api/v1/projects/${id}/building-model`, { method: 'POST', body });
+  },
+  createDrawings: (
+    id: string,
+    sliceHeightM: number,
+    upAxis: UpAxis,
+    modelUnits: ModelUnits,
+    includeDimensions = true,
+  ) => request<Job>(`/api/v1/projects/${id}/drawings`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      slice_height_m: sliceHeightM,
+      up_axis: upAxis,
+      model_units: modelUnits,
+      include_dimensions: includeDimensions,
+    }),
+  }),
   uploadAsset: async (id: string, category: AssetCategory, slot: string, file: File) => {
     const body = new FormData();
     body.append('file', file);
     body.append('label', file.name.replace(/\.[^.]+$/, ''));
     return request<Project>(`/api/v1/projects/${id}/assets/${category}/${slot}`, { method: 'POST', body });
   },
-  analyze: (id: string, planWidthM: number, wallHeightM: number) =>
-    request<SceneManifest>(`/api/v1/projects/${id}/analyze`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ plan_width_m: planWidthM, wall_height_m: wallHeightM }),
+  analyze: (
+    id: string,
+    planWidthM: number,
+    wallHeightM: number,
+    wallDetection: WallDetectionMode,
+    minimumWallLengthM: number,
+  ) => request<SceneManifest>(`/api/v1/projects/${id}/analyze`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      plan_width_m: planWidthM,
+      wall_height_m: wallHeightM,
+      wall_detection: wallDetection,
+      minimum_wall_length_m: minimumWallLengthM,
     }),
+  }),
   updateRoom: (id: string, roomId: string, name: string) =>
     request<SceneManifest>(`/api/v1/projects/${id}/rooms/${roomId}`, {
       method: 'PATCH',
