@@ -10,24 +10,43 @@ from shapely.ops import unary_union
 from ..models import RoomCreateRequest, RoomShape, SceneManifest, WallSegment
 
 
+MIN_VERTEX_DISTANCE = 0.025
+MAX_ROOM_VERTICES = 64
+
+
 def _clamp(value: float, lower: float, upper: float) -> float:
     return max(lower, min(upper, value))
+
+
+def _clean_vertices(points: list[tuple[float, float]], scene: SceneManifest) -> list[tuple[float, float]]:
+    cleaned: list[tuple[float, float]] = []
+    for x, z in points:
+        point = (
+            round(_clamp(float(x), 0.0, scene.width_m), 3),
+            round(_clamp(float(z), 0.0, scene.depth_m), 3),
+        )
+        if cleaned and math.dist(cleaned[-1], point) < MIN_VERTEX_DISTANCE:
+            continue
+        cleaned.append(point)
+    if len(cleaned) > 1 and math.dist(cleaned[0], cleaned[-1]) < MIN_VERTEX_DISTANCE:
+        cleaned.pop()
+    if len(cleaned) < 3:
+        raise ValueError("A room needs at least three distinct points.")
+    if len(cleaned) > MAX_ROOM_VERTICES:
+        raise ValueError(f"A room can contain at most {MAX_ROOM_VERTICES} points.")
+    return cleaned
 
 
 def _normalise_polygon(
     points: list[tuple[float, float]],
     scene: SceneManifest,
 ) -> tuple[list[tuple[float, float]], float, tuple[float, float]]:
-    cleaned = [
-        (
-            round(_clamp(float(x), 0.0, scene.width_m), 3),
-            round(_clamp(float(z), 0.0, scene.depth_m), 3),
-        )
-        for x, z in points
-    ]
+    cleaned = _clean_vertices(points, scene)
     polygon = Polygon(cleaned)
     if not polygon.is_valid:
-        polygon = polygon.buffer(0)
+        raise ValueError(
+            "Room edges cannot cross or overlap. Move the numbered points until the polygon forms one simple closed boundary."
+        )
     if polygon.is_empty or polygon.geom_type != "Polygon" or polygon.area < 0.1:
         raise ValueError("Room geometry must form one valid polygon with an area of at least 0.1 m².")
     exterior = [(round(float(x), 3), round(float(z), 3)) for x, z in list(polygon.exterior.coords)[:-1]]
@@ -76,9 +95,13 @@ def _merge_axis_intervals(
 
 def walls_from_rooms(scene: SceneManifest) -> list[WallSegment]:
     source_lines: list[LineString] = []
+    room_polygons: list[Polygon] = []
     for room in scene.rooms:
         if len(room.polygon) < 3:
             continue
+        polygon = Polygon(room.polygon)
+        if polygon.is_valid and not polygon.is_empty:
+            room_polygons.append(polygon)
         closed = room.polygon + [room.polygon[0]]
         for start, end in zip(closed, closed[1:]):
             if math.dist(start, end) >= 0.08:
@@ -88,6 +111,8 @@ def walls_from_rooms(scene: SceneManifest) -> list[WallSegment]:
         return []
 
     network = unary_union(source_lines)
+    footprint = unary_union(room_polygons) if room_polygons else None
+    outer_boundary = footprint.boundary if footprint is not None and not footprint.is_empty else None
     horizontal: dict[float, list[tuple[float, float]]] = defaultdict(list)
     vertical: dict[float, list[tuple[float, float]]] = defaultdict(list)
     diagonal: list[tuple[tuple[float, float], tuple[float, float]]] = []
@@ -110,22 +135,31 @@ def walls_from_rooms(scene: SceneManifest) -> list[WallSegment]:
 
     segments = _merge_axis_intervals(horizontal, True) + _merge_axis_intervals(vertical, False) + diagonal
     thickness = scene.walls[0].thickness if scene.walls else 0.16
-    return [
-        WallSegment(
-            id=f"wall-{uuid.uuid4().hex[:8]}",
-            start=(round(start[0], 3), round(start[1], 3)),
-            end=(round(end[0], 3), round(end[1], 3)),
-            height=scene.wall_height_m,
-            thickness=thickness,
+    walls: list[WallSegment] = []
+    for start, end in segments:
+        segment = LineString([start, end])
+        midpoint = segment.interpolate(0.5, normalized=True)
+        exterior = bool(outer_boundary is not None and outer_boundary.distance(midpoint) <= 0.04)
+        walls.append(
+            WallSegment(
+                id=f"wall-{uuid.uuid4().hex[:8]}",
+                start=(round(start[0], 3), round(start[1], 3)),
+                end=(round(end[0], 3), round(end[1], 3)),
+                height=scene.wall_height_m,
+                thickness=thickness,
+                wall_type="exterior" if exterior else "interior",
+                confidence=1.0,
+            )
         )
-        for start, end in segments
-    ]
+    return walls
 
 
 def rebuild_scene_from_rooms(scene: SceneManifest) -> SceneManifest:
     normalised_rooms: list[RoomShape] = []
     for room in scene.rooms:
         polygon, area, centroid = _normalise_polygon(room.polygon, scene)
+        xs = [point[0] for point in polygon]
+        zs = [point[1] for point in polygon]
         normalised_rooms.append(
             RoomShape(
                 id=room.id,
@@ -133,20 +167,38 @@ def rebuild_scene_from_rooms(scene: SceneManifest) -> SceneManifest:
                 polygon=polygon,
                 area_m2=area,
                 centroid=centroid,
+                room_type=room.room_type,
+                width_m=round(max(xs) - min(xs), 3),
+                depth_m=round(max(zs) - min(zs), 3),
+                extracted_dimension=room.extracted_dimension,
+                label_confidence=room.label_confidence,
             )
         )
     scene.rooms = normalised_rooms
     scene.walls = walls_from_rooms(scene)
-    scene.camera_path = [
-        (room.centroid[0], 1.6, room.centroid[1]) for room in scene.rooms
-    ]
+    scene.camera_path = [(room.centroid[0], 1.6, room.centroid[1]) for room in scene.rooms]
+    scene.openings = []
+    scene.fixtures_and_furniture = []
+    scene.collision_segments = [(wall.start, wall.end) for wall in scene.walls]
+    scene.first_person_start = scene.camera_path[0] if scene.camera_path else None
     scene.layout_mode = "manual"
+    scene.project_metadata.detected_rooms = len(scene.rooms)
+    scene.project_metadata.detected_openings = 0
+    scene.project_metadata.detected_objects = 0
+    scene.project_metadata.structural_confidence = 1.0 if scene.rooms else 0.0
     scene.warnings = [
         warning for warning in scene.warnings
-        if "wall count" not in warning.lower() and "probabilistic" not in warning.lower()
+        if "wall count" not in warning.lower()
+        and "probabilistic" not in warning.lower()
+        and "compile production" not in warning.lower()
     ]
-    if "Manual room layout is authoritative; walls are rebuilt from room boundaries." not in scene.warnings:
-        scene.warnings.append("Manual room layout is authoritative; walls are rebuilt from room boundaries.")
+    messages = [
+        "Manual free-form room polygons are authoritative; walls are rebuilt from every room edge.",
+        "Compile the production scene after editing to recalculate openings, objects and the walkthrough path.",
+    ]
+    for message in messages:
+        if message not in scene.warnings:
+            scene.warnings.append(message)
     return scene
 
 
@@ -155,12 +207,7 @@ def add_room(scene: SceneManifest, request: RoomCreateRequest) -> SceneManifest:
     depth = min(request.depth, scene.depth_m)
     x = _clamp(request.x, 0.0, max(0.0, scene.width_m - width))
     z = _clamp(request.z, 0.0, max(0.0, scene.depth_m - depth))
-    polygon = [
-        (x, z),
-        (x + width, z),
-        (x + width, z + depth),
-        (x, z + depth),
-    ]
+    polygon = [(x, z), (x + width, z), (x + width, z + depth), (x, z + depth)]
     points, area, centroid = _normalise_polygon(polygon, scene)
     scene.rooms.append(
         RoomShape(
@@ -169,6 +216,9 @@ def add_room(scene: SceneManifest, request: RoomCreateRequest) -> SceneManifest:
             polygon=points,
             area_m2=area,
             centroid=centroid,
+            width_m=round(width, 3),
+            depth_m=round(depth, 3),
+            label_confidence=1.0,
         )
     )
     return rebuild_scene_from_rooms(scene)
