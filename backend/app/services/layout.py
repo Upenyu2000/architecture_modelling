@@ -4,14 +4,15 @@ import math
 import uuid
 from collections import defaultdict
 
-from shapely.geometry import LineString, MultiLineString, Polygon
-from shapely.ops import unary_union
+from shapely.geometry import LineString, MultiLineString, Point, Polygon
+from shapely.ops import nearest_points, unary_union
 
 from ..models import RoomCreateRequest, RoomShape, SceneManifest, WallSegment
 
 
 MIN_VERTEX_DISTANCE = 0.025
 MAX_ROOM_VERTICES = 64
+ROOM_SNAP_DISTANCE = 0.22
 
 
 def _clamp(value: float, lower: float, upper: float) -> float:
@@ -54,6 +55,53 @@ def _normalise_polygon(
         round(float(polygon.centroid.x), 3),
         round(float(polygon.centroid.y), 3),
     )
+
+
+def _room_edges(room: RoomShape) -> list[LineString]:
+    if len(room.polygon) < 2:
+        return []
+    closed = room.polygon + [room.polygon[0]]
+    return [LineString([start, end]) for start, end in zip(closed, closed[1:]) if math.dist(start, end) >= 0.08]
+
+
+def snap_room_polygon(
+    scene: SceneManifest,
+    points: list[tuple[float, float]],
+    room_id: str | None = None,
+    tolerance: float = ROOM_SNAP_DISTANCE,
+) -> list[tuple[float, float]]:
+    """Snap room vertices to nearby room vertices/edges so adjacent rooms share one exact wall."""
+    other_rooms = [room for room in scene.rooms if room.id != room_id and len(room.polygon) >= 3]
+    if not other_rooms:
+        return points
+
+    target_vertices = [vertex for room in other_rooms for vertex in room.polygon]
+    target_edges = [edge for room in other_rooms for edge in _room_edges(room)]
+    snapped: list[tuple[float, float]] = []
+
+    for raw in points:
+        point = (float(raw[0]), float(raw[1]))
+        best_vertex = min(target_vertices, key=lambda vertex: math.dist(point, vertex), default=None)
+        if best_vertex is not None and math.dist(point, best_vertex) <= tolerance:
+            snapped.append((round(best_vertex[0], 3), round(best_vertex[1], 3)))
+            continue
+
+        source_point = Point(point)
+        best_projection: tuple[float, tuple[float, float]] | None = None
+        for edge in target_edges:
+            distance = source_point.distance(edge)
+            if distance > tolerance:
+                continue
+            projected = nearest_points(source_point, edge)[1]
+            candidate = (distance, (float(projected.x), float(projected.y)))
+            if best_projection is None or candidate[0] < best_projection[0]:
+                best_projection = candidate
+        if best_projection is not None:
+            snapped.append((round(best_projection[1][0], 3), round(best_projection[1][1], 3)))
+        else:
+            snapped.append(point)
+
+    return snapped
 
 
 def _flatten_lines(geometry) -> list[LineString]:
@@ -102,10 +150,7 @@ def walls_from_rooms(scene: SceneManifest) -> list[WallSegment]:
         polygon = Polygon(room.polygon)
         if polygon.is_valid and not polygon.is_empty:
             room_polygons.append(polygon)
-        closed = room.polygon + [room.polygon[0]]
-        for start, end in zip(closed, closed[1:]):
-            if math.dist(start, end) >= 0.08:
-                source_lines.append(LineString([start, end]))
+        source_lines.extend(_room_edges(room))
 
     if not source_lines:
         return []
@@ -155,6 +200,7 @@ def walls_from_rooms(scene: SceneManifest) -> list[WallSegment]:
 
 
 def rebuild_scene_from_rooms(scene: SceneManifest) -> SceneManifest:
+    preserved_manual = [item.model_copy(deep=True) for item in scene.openings if item.source == "manual"]
     normalised_rooms: list[RoomShape] = []
     for room in scene.rooms:
         polygon, area, centroid = _normalise_polygon(room.polygon, scene)
@@ -178,12 +224,15 @@ def rebuild_scene_from_rooms(scene: SceneManifest) -> SceneManifest:
     scene.walls = walls_from_rooms(scene)
     scene.camera_path = [(room.centroid[0], 1.6, room.centroid[1]) for room in scene.rooms]
     scene.openings = []
+    if preserved_manual:
+        from .openings import restore_manual_openings
+        scene = restore_manual_openings(scene, preserved_manual)
     scene.fixtures_and_furniture = []
     scene.collision_segments = [(wall.start, wall.end) for wall in scene.walls]
     scene.first_person_start = scene.camera_path[0] if scene.camera_path else None
     scene.layout_mode = "manual"
     scene.project_metadata.detected_rooms = len(scene.rooms)
-    scene.project_metadata.detected_openings = 0
+    scene.project_metadata.detected_openings = len(scene.openings)
     scene.project_metadata.detected_objects = 0
     scene.project_metadata.structural_confidence = 1.0 if scene.rooms else 0.0
     scene.warnings = [
@@ -191,11 +240,16 @@ def rebuild_scene_from_rooms(scene: SceneManifest) -> SceneManifest:
         if "wall count" not in warning.lower()
         and "probabilistic" not in warning.lower()
         and "compile production" not in warning.lower()
+        and "manually placed opening" not in warning.lower()
     ]
     messages = [
+        "Nearby room vertices snap within 0.22 m so adjacent rooms share one wall instead of creating a gap or duplicate wall.",
         "Manual free-form room polygons are authoritative; walls are rebuilt from every room edge.",
-        "Compile the production scene after editing to recalculate openings, objects and the walkthrough path.",
+        "Doors on a shared wall connect both rooms and become traversable in first-person mode when opened.",
+        "Compile the production scene after editing to recalculate objects and the walkthrough path.",
     ]
+    if any(opening.wall_id is None for opening in scene.openings):
+        messages.append("Some manually placed doors or windows are still unattached; move a room wall closer or reposition the opening to snap it.")
     for message in messages:
         if message not in scene.warnings:
             scene.warnings.append(message)
@@ -208,6 +262,7 @@ def add_room(scene: SceneManifest, request: RoomCreateRequest) -> SceneManifest:
     x = _clamp(request.x, 0.0, max(0.0, scene.width_m - width))
     z = _clamp(request.z, 0.0, max(0.0, scene.depth_m - depth))
     polygon = [(x, z), (x + width, z), (x + width, z + depth), (x, z + depth)]
+    polygon = snap_room_polygon(scene, polygon)
     points, area, centroid = _normalise_polygon(polygon, scene)
     scene.rooms.append(
         RoomShape(
@@ -232,7 +287,8 @@ def update_room_geometry(
     room = next((item for item in scene.rooms if item.id == room_id), None)
     if room is None:
         raise KeyError(room_id)
-    points, area, centroid = _normalise_polygon(polygon, scene)
+    snapped = snap_room_polygon(scene, polygon, room_id=room_id)
+    points, area, centroid = _normalise_polygon(snapped, scene)
     room.polygon = points
     room.area_m2 = area
     room.centroid = centroid
