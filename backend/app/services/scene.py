@@ -77,6 +77,8 @@ def apply_assets(scene: SceneManifest, assets: dict[str, AssetFile]) -> SceneMan
             source_path=asset.path,
             mesh_url=asset.mesh_url,
             mesh_path=asset.mesh_path,
+            source="user_upload",
+            confidence=1.0,
         ))
         object_index += 1
     scene.assets = scene_assets
@@ -84,13 +86,14 @@ def apply_assets(scene: SceneManifest, assets: dict[str, AssetFile]) -> SceneMan
     scene.floor_texture_path = floor_texture_path
     scene.wall_texture_url = wall_texture
     scene.wall_texture_path = wall_texture_path
-    scene.camera_path = generate_camera_path(scene.rooms, scene.width_m, scene.depth_m)
+    if not scene.camera_path:
+        scene.camera_path = generate_camera_path(scene.rooms, scene.width_m, scene.depth_m)
     return scene
 
 
 def generate_camera_path(rooms: list[RoomShape], width_m: float, depth_m: float) -> list[tuple[float, float, float]]:
     if not rooms:
-        return [(width_m * 0.15, 1.6, depth_m * 0.15), (width_m * 0.85, 1.6, depth_m * 0.85)]
+        return [(width_m * 0.15, 1.7, depth_m * 0.15), (width_m * 0.85, 1.7, depth_m * 0.85)]
     remaining = rooms.copy()
     current = min(remaining, key=lambda room: room.centroid[0] + room.centroid[1])
     ordered = [current]
@@ -101,7 +104,7 @@ def generate_camera_path(rooms: list[RoomShape], width_m: float, depth_m: float)
         remaining.remove(current)
     points: list[tuple[float, float, float]] = []
     for room in ordered:
-        points.append((round(room.centroid[0], 3), 1.6, round(room.centroid[1], 3)))
+        points.append((round(room.centroid[0], 3), 1.7, round(room.centroid[1], 3)))
     if len(points) == 1:
         x, y, z = points[0]
         points.append((min(width_m - 0.5, x + 1.0), y, min(depth_m - 0.5, z + 1.0)))
