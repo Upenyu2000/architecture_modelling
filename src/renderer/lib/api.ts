@@ -1,5 +1,5 @@
 import type {
-  AssetCategory, Job, ModelUnits, PlanType, Project, SaveSlot, SceneManifest,
+  AssetCategory, Job, MaterialUpdate, ModelUnits, PlanType, Project, SaveSlot, SceneManifest,
   UpAxis, WallDetectionMode,
 } from '../types';
 
@@ -21,6 +21,26 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 export function absoluteUrl(path?: string | null): string | undefined {
   if (!path) return undefined;
   return path.startsWith('http') ? path : `${cachedBaseUrl}${path}`;
+}
+
+function analysisPayload(
+  planWidthM: number,
+  wallHeightM: number,
+  wallDetection: WallDetectionMode,
+  minimumWallLengthM: number,
+  planType: PlanType,
+  useVisionAi = false,
+) {
+  return {
+    plan_width_m: planWidthM,
+    wall_height_m: wallHeightM,
+    wall_detection: wallDetection,
+    minimum_wall_length_m: minimumWallLengthM,
+    plan_type: planType,
+    detect_openings: true,
+    auto_furnish: true,
+    use_vision_ai: useVisionAi,
+  };
 }
 
 export const api = {
@@ -86,14 +106,35 @@ export const api = {
   ) => request<SceneManifest>(`/api/v1/projects/${id}/analyze`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      plan_width_m: planWidthM,
-      wall_height_m: wallHeightM,
-      wall_detection: wallDetection,
-      minimum_wall_length_m: minimumWallLengthM,
-      plan_type: planType,
-    }),
+    body: JSON.stringify(analysisPayload(planWidthM, wallHeightM, wallDetection, minimumWallLengthM, planType)),
   }),
+  compileArchitecture: (
+    id: string,
+    planWidthM: number,
+    wallHeightM: number,
+    wallDetection: WallDetectionMode,
+    minimumWallLengthM: number,
+    planType: PlanType,
+    useVisionAi = false,
+  ) => request<SceneManifest>(`/api/v1/projects/${id}/compile-architecture`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(analysisPayload(
+      planWidthM,
+      wallHeightM,
+      wallDetection,
+      minimumWallLengthM,
+      planType,
+      useVisionAi,
+    )),
+  }),
+  updateMaterials: (id: string, materials: MaterialUpdate) =>
+    request<SceneManifest>(`/api/v1/projects/${id}/materials`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(materials),
+    }),
+  architectureJsonUrl: (id: string) => absoluteUrl(`/api/v1/projects/${id}/architecture.json`)!,
   startManualLayout: (id: string, planWidthM: number, wallHeightM: number, clearExisting = true) =>
     request<SceneManifest>(`/api/v1/projects/${id}/manual-layout`, {
       method: 'POST',
