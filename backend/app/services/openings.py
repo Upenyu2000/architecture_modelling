@@ -61,6 +61,33 @@ def _wall(scene: SceneManifest, wall_id: str) -> WallSegment:
     return wall
 
 
+def _project_ratio(wall: WallSegment, point: tuple[float, float]) -> tuple[float, float]:
+    x1, z1 = wall.start
+    x2, z2 = wall.end
+    dx, dz = x2 - x1, z2 - z1
+    length_squared = dx * dx + dz * dz
+    if length_squared <= 1e-8:
+        return 0.5, math.dist(point, wall.start)
+    ratio = max(0.0, min(1.0, ((point[0] - x1) * dx + (point[1] - z1) * dz) / length_squared))
+    closest = (x1 + dx * ratio, z1 + dz * ratio)
+    return ratio, math.dist(point, closest)
+
+
+def nearest_wall(
+    scene: SceneManifest,
+    point: tuple[float, float],
+    maximum_distance: float = 0.85,
+) -> tuple[WallSegment, float, float] | None:
+    best: tuple[WallSegment, float, float] | None = None
+    for wall in scene.walls:
+        ratio, distance = _project_ratio(wall, point)
+        if distance > maximum_distance:
+            continue
+        if best is None or distance < best[2]:
+            best = (wall, ratio, distance)
+    return best
+
+
 def _pose(wall: WallSegment, placement_ratio: float, width: float) -> tuple[tuple[float, float], float, float]:
     x1, z1 = wall.start
     x2, z2 = wall.end
@@ -77,19 +104,33 @@ def _pose(wall: WallSegment, placement_ratio: float, width: float) -> tuple[tupl
     return position, rotation, round(safe_ratio, 5)
 
 
+def _clamped_position(scene: SceneManifest, point: tuple[float, float]) -> tuple[float, float]:
+    return (
+        round(max(0.0, min(scene.width_m, float(point[0]))), 4),
+        round(max(0.0, min(scene.depth_m, float(point[1]))), 4),
+    )
+
+
 def _overlaps(scene: SceneManifest, candidate: Opening, ignore_id: str | None = None) -> bool:
-    if not candidate.wall_id or candidate.placement_ratio is None:
+    if candidate.wall_id and candidate.placement_ratio is not None:
+        wall = _wall(scene, candidate.wall_id)
+        length = max(math.dist(wall.start, wall.end), 1e-6)
+        start = candidate.placement_ratio - candidate.width / (2 * length)
+        end = candidate.placement_ratio + candidate.width / (2 * length)
+        for item in scene.openings:
+            if item.id == ignore_id or item.wall_id != candidate.wall_id or item.placement_ratio is None:
+                continue
+            other_start = item.placement_ratio - item.width / (2 * length)
+            other_end = item.placement_ratio + item.width / (2 * length)
+            if min(end, other_end) - max(start, other_start) > 0.04 / length:
+                return True
         return False
-    wall = _wall(scene, candidate.wall_id)
-    length = max(math.dist(wall.start, wall.end), 1e-6)
-    start = candidate.placement_ratio - candidate.width / (2 * length)
-    end = candidate.placement_ratio + candidate.width / (2 * length)
+
     for item in scene.openings:
-        if item.id == ignore_id or item.wall_id != candidate.wall_id or item.placement_ratio is None:
+        if item.id == ignore_id or item.wall_id:
             continue
-        other_start = item.placement_ratio - item.width / (2 * length)
-        other_end = item.placement_ratio + item.width / (2 * length)
-        if min(end, other_end) - max(start, other_start) > 0.04 / length:
+        clearance = max(0.22, min(candidate.width, item.width) * 0.34)
+        if math.dist(candidate.position, item.position) < clearance:
             return True
     return False
 
@@ -100,36 +141,242 @@ def _refresh(scene: SceneManifest) -> SceneManifest:
     return scene
 
 
-def add_opening(scene: SceneManifest, request: OpeningCreateRequest) -> SceneManifest:
-    wall = _wall(scene, request.wall_id)
-    default_width, default_height = DEFAULTS[request.opening_type]
-    width = request.width or default_width
-    height = request.height or default_height
-    position, rotation, ratio = _pose(wall, request.placement_ratio, width)
-    window = is_window(request.opening_type)
-    passage = request.opening_type == "open_passage"
+def _normalised_properties(
+    opening_type: str,
+    swing_direction: str,
+    hinge_side: str,
+    interactive: bool,
+    default_open: bool,
+    sill_height: float,
+) -> tuple[str, str, bool, bool, float]:
+    window = is_window(opening_type)
+    passage = opening_type == "open_passage"
+    if window or passage:
+        swing_direction = "none"
+        hinge_side = "none"
+        interactive = False
+    if passage:
+        default_open = True
+    if not window:
+        sill_height = 0.0
+    return swing_direction, hinge_side, bool(interactive and is_door(opening_type)), bool(default_open), sill_height
+
+
+def add_opening_at_position(
+    scene: SceneManifest,
+    *,
+    opening_type: str,
+    position: tuple[float, float],
+    wall_id: str | None = None,
+    placement_ratio: float | None = None,
+    rotation_deg: float = 0.0,
+    snap_to_wall: bool = True,
+    width: float | None = None,
+    height: float | None = None,
+    swing_direction: str = "clockwise",
+    hinge_side: str = "left",
+    swing_angle_deg: float = 90.0,
+    sill_height: float = 0.9,
+    interactive: bool = True,
+    default_open: bool = False,
+) -> SceneManifest:
+    default_width, default_height = DEFAULTS[opening_type]
+    resolved_width = float(width or default_width)
+    resolved_height = float(height or default_height)
+    target_wall: WallSegment | None = None
+    ratio = placement_ratio
+
+    if wall_id:
+        target_wall = _wall(scene, wall_id)
+        if ratio is None:
+            ratio, _ = _project_ratio(target_wall, position)
+    elif snap_to_wall and scene.walls:
+        match = nearest_wall(scene, position, maximum_distance=max(0.5, min(1.2, resolved_width * 0.55)))
+        if match:
+            target_wall, ratio, _ = match
+
+    if target_wall is not None:
+        resolved_position, resolved_rotation, safe_ratio = _pose(target_wall, float(ratio if ratio is not None else 0.5), resolved_width)
+        resolved_wall_id: str | None = target_wall.id
+        resolved_ratio: float | None = safe_ratio
+    else:
+        resolved_position = _clamped_position(scene, position)
+        resolved_rotation = round(float(rotation_deg), 3)
+        resolved_wall_id = None
+        resolved_ratio = None
+
+    swing_direction, hinge_side, interactive, default_open, sill_height = _normalised_properties(
+        opening_type, swing_direction, hinge_side, interactive, default_open, sill_height,
+    )
     opening = Opening(
         id=f"opening-{uuid.uuid4().hex[:10]}",
-        opening_type=request.opening_type,
-        position=position,
-        width=round(width, 3),
-        height=round(height, 3),
-        rotation_deg=rotation,
-        wall_id=wall.id,
-        placement_ratio=ratio,
-        swing_direction="none" if window or passage else request.swing_direction,
-        hinge_side="none" if window or passage else request.hinge_side,
-        swing_angle_deg=request.swing_angle_deg,
-        sill_height=request.sill_height if window else 0.0,
-        interactive=bool(request.interactive and is_door(request.opening_type)),
-        default_open=bool(request.default_open or passage),
+        opening_type=opening_type,  # type: ignore[arg-type]
+        position=resolved_position,
+        width=round(resolved_width, 3),
+        height=round(resolved_height, 3),
+        rotation_deg=resolved_rotation,
+        wall_id=resolved_wall_id,
+        placement_ratio=resolved_ratio,
+        swing_direction=swing_direction,  # type: ignore[arg-type]
+        hinge_side=hinge_side,  # type: ignore[arg-type]
+        swing_angle_deg=float(swing_angle_deg),
+        sill_height=float(sill_height),
+        interactive=interactive,
+        default_open=default_open,
         source="manual",
         confidence=1.0,
     )
     if _overlaps(scene, opening):
-        raise ValueError("This opening overlaps another opening on the selected wall.")
+        raise ValueError("This opening overlaps another opening at the selected location.")
     scene.openings.append(opening)
+    if opening.wall_id is None:
+        warning = "A manually placed opening is not attached to a wall yet. It will snap automatically when a nearby wall is created or detected."
+        if warning not in scene.warnings:
+            scene.warnings.append(warning)
     return _refresh(scene)
+
+
+def update_opening_at_position(
+    scene: SceneManifest,
+    opening_id: str,
+    *,
+    opening_type: str | None = None,
+    position: tuple[float, float] | None = None,
+    wall_id: str | None = None,
+    placement_ratio: float | None = None,
+    rotation_deg: float | None = None,
+    snap_to_wall: bool = True,
+    width: float | None = None,
+    height: float | None = None,
+    swing_direction: str | None = None,
+    hinge_side: str | None = None,
+    swing_angle_deg: float | None = None,
+    sill_height: float | None = None,
+    interactive: bool | None = None,
+    default_open: bool | None = None,
+) -> SceneManifest:
+    opening = next((item for item in scene.openings if item.id == opening_id), None)
+    if not opening:
+        raise KeyError("Opening not found")
+
+    resolved_type = opening_type or opening.opening_type
+    resolved_width = float(width if width is not None else opening.width)
+    requested_position = position or opening.position
+    target_wall: WallSegment | None = None
+    ratio = placement_ratio
+
+    if wall_id:
+        target_wall = _wall(scene, wall_id)
+        if ratio is None:
+            ratio, _ = _project_ratio(target_wall, requested_position)
+    elif snap_to_wall and scene.walls:
+        match = nearest_wall(scene, requested_position, maximum_distance=max(0.5, min(1.2, resolved_width * 0.55)))
+        if match:
+            target_wall, ratio, _ = match
+
+    if target_wall is not None:
+        resolved_position, resolved_rotation, safe_ratio = _pose(target_wall, float(ratio if ratio is not None else 0.5), resolved_width)
+        opening.wall_id = target_wall.id
+        opening.placement_ratio = safe_ratio
+        opening.position = resolved_position
+        opening.rotation_deg = resolved_rotation
+    else:
+        opening.wall_id = None
+        opening.placement_ratio = None
+        opening.position = _clamped_position(scene, requested_position)
+        opening.rotation_deg = round(float(rotation_deg if rotation_deg is not None else opening.rotation_deg), 3)
+
+    opening.opening_type = resolved_type  # type: ignore[assignment]
+    opening.width = round(resolved_width, 3)
+    if height is not None:
+        opening.height = round(float(height), 3)
+    resolved_swing = swing_direction if swing_direction is not None else opening.swing_direction
+    resolved_hinge = hinge_side if hinge_side is not None else opening.hinge_side
+    resolved_interactive = interactive if interactive is not None else opening.interactive
+    resolved_default_open = default_open if default_open is not None else opening.default_open
+    resolved_sill = sill_height if sill_height is not None else opening.sill_height
+    resolved_swing, resolved_hinge, resolved_interactive, resolved_default_open, resolved_sill = _normalised_properties(
+        resolved_type, resolved_swing, resolved_hinge, resolved_interactive, resolved_default_open, resolved_sill,
+    )
+    opening.swing_direction = resolved_swing  # type: ignore[assignment]
+    opening.hinge_side = resolved_hinge  # type: ignore[assignment]
+    opening.interactive = resolved_interactive
+    opening.default_open = resolved_default_open
+    opening.sill_height = resolved_sill
+    if swing_angle_deg is not None:
+        opening.swing_angle_deg = float(swing_angle_deg)
+    opening.source = "manual"
+    opening.confidence = 1.0
+    if _overlaps(scene, opening, ignore_id=opening.id):
+        raise ValueError("This opening overlaps another opening at the selected location.")
+    return _refresh(scene)
+
+
+def reattach_manual_openings(scene: SceneManifest, maximum_distance: float = 1.0) -> SceneManifest:
+    for opening in scene.openings:
+        if opening.source != "manual":
+            continue
+        current_wall = next((wall for wall in scene.walls if wall.id == opening.wall_id), None) if opening.wall_id else None
+        if current_wall is not None:
+            ratio, _ = _project_ratio(current_wall, opening.position)
+            try:
+                opening.position, opening.rotation_deg, opening.placement_ratio = _pose(current_wall, ratio, opening.width)
+            except ValueError:
+                opening.wall_id = None
+                opening.placement_ratio = None
+            continue
+        match = nearest_wall(scene, opening.position, maximum_distance=max(maximum_distance, opening.width * 0.5))
+        if not match:
+            opening.wall_id = None
+            opening.placement_ratio = None
+            continue
+        wall, ratio, _distance = match
+        try:
+            opening.position, opening.rotation_deg, opening.placement_ratio = _pose(wall, ratio, opening.width)
+            opening.wall_id = wall.id
+        except ValueError:
+            opening.wall_id = None
+            opening.placement_ratio = None
+    return _refresh(scene)
+
+
+def restore_manual_openings(scene: SceneManifest, preserved: list[Opening]) -> SceneManifest:
+    detected = [item for item in scene.openings if item.source != "manual"]
+    manual = [item.model_copy(deep=True) for item in preserved]
+    scene.openings = detected
+    for opening in manual:
+        duplicate = next((
+            item for item in scene.openings
+            if math.dist(item.position, opening.position) < max(0.25, min(item.width, opening.width) * 0.4)
+        ), None)
+        if duplicate is not None:
+            scene.openings.remove(duplicate)
+        scene.openings.append(opening)
+    return reattach_manual_openings(scene)
+
+
+def add_opening(scene: SceneManifest, request: OpeningCreateRequest) -> SceneManifest:
+    wall = _wall(scene, request.wall_id)
+    ratio = request.placement_ratio
+    position = (
+        wall.start[0] + (wall.end[0] - wall.start[0]) * ratio,
+        wall.start[1] + (wall.end[1] - wall.start[1]) * ratio,
+    )
+    return add_opening_at_position(
+        scene,
+        opening_type=request.opening_type,
+        position=position,
+        wall_id=request.wall_id,
+        placement_ratio=ratio,
+        width=request.width,
+        height=request.height,
+        swing_direction=request.swing_direction,
+        hinge_side=request.hinge_side,
+        swing_angle_deg=request.swing_angle_deg,
+        sill_height=request.sill_height,
+        interactive=request.interactive,
+        default_open=request.default_open,
+    )
 
 
 def update_opening(scene: SceneManifest, opening_id: str, request: OpeningUpdateRequest) -> SceneManifest:
@@ -137,41 +384,25 @@ def update_opening(scene: SceneManifest, opening_id: str, request: OpeningUpdate
     if not opening:
         raise KeyError("Opening not found")
     data = request.model_dump(exclude_none=True)
-    opening_type = str(data.get("opening_type", opening.opening_type))
-    wall_id = str(data.get("wall_id", opening.wall_id or ""))
+    wall_id = data.get("wall_id", opening.wall_id)
     if not wall_id:
         raise ValueError("Choose a wall for this opening.")
-    width = float(data.get("width", opening.width))
-    ratio = float(data.get("placement_ratio", opening.placement_ratio if opening.placement_ratio is not None else 0.5))
-    wall = _wall(scene, wall_id)
-    position, rotation, safe_ratio = _pose(wall, ratio, width)
-
-    opening.opening_type = opening_type  # type: ignore[assignment]
-    opening.wall_id = wall_id
-    opening.position = position
-    opening.rotation_deg = rotation
-    opening.placement_ratio = safe_ratio
-    opening.width = round(width, 3)
-    for key in ("height", "swing_direction", "hinge_side", "swing_angle_deg", "sill_height", "interactive", "default_open"):
-        if key in data:
-            setattr(opening, key, data[key])
-    if is_window(opening_type):
-        opening.swing_direction = "none"
-        opening.hinge_side = "none"
-        opening.interactive = False
-    elif opening_type == "open_passage":
-        opening.swing_direction = "none"
-        opening.hinge_side = "none"
-        opening.interactive = False
-        opening.default_open = True
-        opening.sill_height = 0.0
-    else:
-        opening.sill_height = 0.0
-    opening.source = "manual"
-    opening.confidence = 1.0
-    if _overlaps(scene, opening, ignore_id=opening.id):
-        raise ValueError("This opening overlaps another opening on the selected wall.")
-    return _refresh(scene)
+    return update_opening_at_position(
+        scene,
+        opening_id,
+        opening_type=data.get("opening_type"),
+        position=opening.position,
+        wall_id=str(wall_id),
+        placement_ratio=data.get("placement_ratio", opening.placement_ratio),
+        width=data.get("width"),
+        height=data.get("height"),
+        swing_direction=data.get("swing_direction"),
+        hinge_side=data.get("hinge_side"),
+        swing_angle_deg=data.get("swing_angle_deg"),
+        sill_height=data.get("sill_height"),
+        interactive=data.get("interactive"),
+        default_open=data.get("default_open"),
+    )
 
 
 def delete_opening(scene: SceneManifest, opening_id: str) -> SceneManifest:

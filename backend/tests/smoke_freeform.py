@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from app.models import ProjectMetadata, RoomShape, SceneManifest
 from app.services.layout import rebuild_scene_from_rooms, update_room_geometry
+from app.services.openings import add_opening_at_position
 
 
 def scene_with_rooms() -> SceneManifest:
@@ -25,6 +26,35 @@ def scene_with_rooms() -> SceneManifest:
                 polygon=[(5.0, 1.0), (10.0, 1.0), (10.0, 3.0), (8.0, 3.0), (8.0, 7.0), (5.0, 7.0)],
                 area_m2=0.0,
                 centroid=(0.0, 0.0),
+            ),
+        ],
+        assets=[],
+        camera_path=[],
+        project_metadata=ProjectMetadata(),
+    )
+
+
+def adjacent_room_scene() -> SceneManifest:
+    return SceneManifest(
+        project_id="smoke-room-snap",
+        width_m=12.0,
+        depth_m=8.0,
+        wall_height_m=2.8,
+        walls=[],
+        rooms=[
+            RoomShape(
+                id="room-1",
+                name="Room 1",
+                polygon=[(1.0, 1.0), (5.0, 1.0), (5.0, 5.0), (1.0, 5.0)],
+                area_m2=16.0,
+                centroid=(3.0, 3.0),
+            ),
+            RoomShape(
+                id="room-2",
+                name="Room 2",
+                polygon=[(5.14, 1.0), (9.0, 1.0), (9.0, 5.0), (5.14, 5.0)],
+                area_m2=15.44,
+                centroid=(7.07, 3.0),
             ),
         ],
         assets=[],
@@ -61,7 +91,42 @@ def main() -> None:
     else:
         raise AssertionError("Self-crossing room polygons must be rejected")
 
-    print(f"Free-form smoke test passed: {len(scene.rooms)} rooms, {len(scene.walls)} wall segments")
+    adjacent = adjacent_room_scene()
+    adjacent = update_room_geometry(
+        adjacent,
+        "room-2",
+        [(5.14, 1.0), (9.0, 1.0), (9.0, 5.0), (5.14, 5.0)],
+    )
+    room_2 = next(room for room in adjacent.rooms if room.id == "room-2")
+    assert room_2.polygon[0][0] == 5.0 and room_2.polygon[-1][0] == 5.0, "Nearby room edge must snap to Room 1"
+    shared = [
+        wall for wall in adjacent.walls
+        if abs(wall.start[0] - 5.0) < 0.02 and abs(wall.end[0] - 5.0) < 0.02
+        and min(wall.start[1], wall.end[1]) <= 1.01 and max(wall.start[1], wall.end[1]) >= 4.99
+    ]
+    assert len(shared) == 1, "Adjacent rooms must generate one shared wall"
+
+    adjacent = add_opening_at_position(
+        adjacent,
+        opening_type="door",
+        position=(5.08, 3.0),
+        snap_to_wall=True,
+        width=0.9,
+    )
+    door = adjacent.openings[0]
+    assert door.wall_id == shared[0].id
+    assert abs(door.position[0] - 5.0) < 0.01
+    assert door.interactive is True
+
+    adjacent = update_room_geometry(
+        adjacent,
+        "room-2",
+        [(5.08, 1.0), (9.0, 1.0), (9.0, 5.0), (5.08, 5.0)],
+    )
+    assert len(adjacent.openings) == 1
+    assert adjacent.openings[0].wall_id is not None, "Manual door must reattach after shared-wall rebuild"
+
+    print(f"Free-form smoke test passed: {len(scene.rooms)} rooms, shared-room snapping and interactive doorway")
 
 
 if __name__ == "__main__":

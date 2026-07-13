@@ -12,6 +12,7 @@ from .storage import load_project, project_dir, save_project, write_json
 from .services.architecture import compile_architecture, update_materials
 from .services.architecture_export import production_architecture_payload
 from .services.opening_symbols import classify_opening_symbols
+from .services.openings import restore_manual_openings
 from .services.scene import apply_assets
 from .services.segmentation import refine_scene_with_model
 from .services.training_data import export_corrected_training_example
@@ -84,7 +85,8 @@ def compile_project_architecture(project_id: str, request: AnalyzeRequest) -> Sc
         learned_openings = [item.model_copy(deep=True) for item in refined.openings if item.source != "manual"]
         scene = compile_architecture(refined, image_path, request)
         scene = classify_opening_symbols(scene, image_path)
-        scene.openings = _merge_openings(manual_openings, _merge_openings(learned_openings, scene.openings))
+        scene.openings = _merge_openings(learned_openings, scene.openings)
+        scene = restore_manual_openings(scene, manual_openings)
         scene.project_metadata.detected_openings = len(scene.openings)
     except Exception as exc:
         raise HTTPException(status_code=422, detail=f"Architectural compilation failed: {exc}")

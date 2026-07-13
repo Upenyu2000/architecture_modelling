@@ -53,7 +53,7 @@
 .manual-note { display: block; margin-top: 7px; color: #6e8a79; text-align: center; font-size: 10px; }
 
 .opening-editor { height: 100%; min-height: 610px; display: grid; grid-template-columns: minmax(0, 1fr) 320px; background: #07130e; }
-.opening-stage { position: relative; min-width: 0; margin: 12px; border: 1px solid #385845; border-radius: 10px; background: #edf1ee; overflow: hidden; }
+.opening-stage { position: relative; min-width: 0; margin: 12px; border: 1px solid #385845; border-radius: 10px; background: #edf1ee; overflow: hidden; cursor: crosshair; }
 .opening-stage svg { width: 100%; height: 100%; display: block; touch-action: none; user-select: none; }
 .opening-room { fill: rgba(61, 130, 90, .09); stroke: rgba(83, 146, 107, .35); stroke-width: .025; vector-effect: non-scaling-stroke; pointer-events: none; }
 .opening-wall { stroke: rgba(20, 30, 24, .82); stroke-width: .14; vector-effect: non-scaling-stroke; cursor: crosshair; transition: stroke .15s, stroke-width .15s; }
@@ -66,7 +66,9 @@
 .opening-symbol text { fill: #13271b; font-size: .2px; text-anchor: middle; dominant-baseline: auto; paint-order: stroke; stroke: #fff; stroke-width: .045px; pointer-events: none; }
 .opening-symbol.selected line { stroke-width: .27; }
 .opening-symbol.selected circle { stroke: #fff; stroke-width: .06; }
-.opening-empty { position: absolute; inset: 0; display: grid; place-content: center; color: #33483c; font-size: 13px; pointer-events: none; }
+.opening-draft-marker line { stroke: #ed655f; stroke-width: .09; vector-effect: non-scaling-stroke; stroke-dasharray: .12 .06; }
+.opening-draft-marker circle { fill: rgba(237, 101, 95, .18); stroke: #ed655f; stroke-width: .05; vector-effect: non-scaling-stroke; }
+.opening-click-hint { position: absolute; left: 50%; bottom: 12px; transform: translateX(-50%); display: inline-flex; align-items: center; gap: 7px; padding: 8px 12px; border: 1px solid rgba(40, 76, 57, .38); border-radius: 999px; background: rgba(244, 248, 245, .9); color: #193a29; font-size: 11px; font-weight: 650; pointer-events: none; box-shadow: 0 4px 18px rgba(21, 49, 34, .14); }
 .opening-controls { display: flex; flex-direction: column; gap: 10px; min-width: 0; padding: 14px; border-left: 1px solid #294938; background: #0a1c14; overflow-y: auto; }
 .opening-heading { display: flex; gap: 9px; align-items: flex-start; padding-bottom: 10px; border-bottom: 1px solid #294938; color: #d9efe1; }
 .opening-heading > div { display: grid; gap: 2px; }
@@ -78,6 +80,7 @@
 .opening-number-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .opening-controls .checkbox-row { display: grid; grid-template-columns: 18px 1fr; align-items: center; gap: 7px; }
 .opening-controls .checkbox-row input { width: 15px; height: 15px; }
+.opening-controls .checkbox-row span { display: inline-flex; align-items: center; gap: 5px; color: #9ab4a3; }
 .opening-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; padding-top: 5px; }
 .opening-actions .primary { grid-column: 1 / -1; margin: 0; }
 .opening-actions .secondary, .opening-actions .danger-icon { margin: 0; border-radius: 8px; padding: 9px; display: inline-flex; justify-content: center; align-items: center; gap: 6px; }
@@ -86,6 +89,7 @@
 .opening-legend span { display: inline-flex; gap: 5px; align-items: center; }
 .opening-legend i { width: 9px; height: 9px; border-radius: 50%; }
 .manual-opening { background: #77e19d; }
+.free-opening { background: #ea6f74; }
 .detected-opening { background: #f0c66a; }
 .window-opening { background: #78c8ef; }
 
