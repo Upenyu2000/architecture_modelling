@@ -12,6 +12,42 @@ import pypdfium2 as pdfium
 from ..models import AnalyzeRequest, RoomShape, SceneManifest, WallSegment
 
 
+def _trim_uniform_background(image: Image.Image) -> Image.Image:
+    rgb = np.asarray(image.convert("RGB"))
+    height, width = rgb.shape[:2]
+    edge = max(4, min(16, min(width, height) // 80))
+    border = np.concatenate(
+        (
+            rgb[:edge].reshape(-1, 3),
+            rgb[-edge:].reshape(-1, 3),
+            rgb[:, :edge].reshape(-1, 3),
+            rgb[:, -edge:].reshape(-1, 3),
+        ),
+        axis=0,
+    )
+    background = np.median(border.astype(np.float32), axis=0)
+    distance = np.linalg.norm(rgb.astype(np.float32) - background, axis=2)
+    foreground = (distance > 18).astype(np.uint8) * 255
+    foreground = cv2.morphologyEx(
+        foreground,
+        cv2.MORPH_CLOSE,
+        np.ones((7, 7), np.uint8),
+        iterations=2,
+    )
+    points = cv2.findNonZero(foreground)
+    if points is None or len(points) < width * height * 0.002:
+        return image
+    x, y, crop_width, crop_height = cv2.boundingRect(points)
+    if crop_width >= width * 0.985 and crop_height >= height * 0.985:
+        return image
+    padding = max(8, int(min(width, height) * 0.012))
+    left = max(0, x - padding)
+    top = max(0, y - padding)
+    right = min(width, x + crop_width + padding)
+    bottom = min(height, y + crop_height + padding)
+    return image.crop((left, top, right, bottom))
+
+
 def rasterize_floorplan(source: Path, destination: Path) -> Path:
     suffix = source.suffix.lower()
     if suffix == ".pdf":
@@ -20,10 +56,11 @@ def rasterize_floorplan(source: Path, destination: Path) -> Path:
             raise ValueError("The uploaded PDF has no pages.")
         bitmap = pdf[0].render(scale=2.0)
         image = bitmap.to_pil().convert("RGB")
-        image.save(destination, "PNG")
-        return destination
-    image = Image.open(source).convert("RGB")
+    else:
+        image = Image.open(source).convert("RGB")
     image.thumbnail((5000, 5000))
+    image = _trim_uniform_background(image)
+    destination.parent.mkdir(parents=True, exist_ok=True)
     image.save(destination, "PNG")
     return destination
 
@@ -44,7 +81,7 @@ def _merge_lines(lines: list[tuple[int, int, int, int]], tolerance: int = 10, ga
         items.sort(key=lambda item: (item[1] if horizontal_axis else item[0], item[0] if horizontal_axis else item[1]))
         for item in items:
             match: list[int] | None = None
-            for previous in reversed(result[-12:]):
+            for previous in reversed(result[-18:]):
                 same_axis = abs((item[1] if horizontal_axis else item[0]) - (previous[1] if horizontal_axis else previous[0])) <= tolerance
                 if not same_axis:
                     continue
@@ -102,7 +139,6 @@ def _touches_other(line: tuple[int, int, int, int], other: tuple[int, int, int, 
         hx1, hy, hx2, _ = horizontal
         vx, vy1, _, vy2 = vertical
         return hx1 - tolerance <= vx <= hx2 + tolerance and vy1 - tolerance <= hy <= vy2 + tolerance
-
     endpoints = ((x1, y1), (x2, y2))
     other_endpoints = ((a1, b1), (a2, b2))
     return any(math.hypot(px - qx, py - qy) <= tolerance for px, py in endpoints for qx, qy in other_endpoints)
@@ -116,7 +152,7 @@ def _filter_structural_lines(
 ) -> list[tuple[int, int, int, int]]:
     if detail == "detailed":
         return lines
-    long_multiplier = 2.1 if detail == "clean" else 1.6
+    long_multiplier = 2.2 if detail == "clean" else 1.6
     retained: list[tuple[int, int, int, int]] = []
     for index, line in enumerate(lines):
         x1, y1, x2, y2 = line
@@ -195,6 +231,14 @@ def _save_detection_preview(
     cv2.imwrite(str(destination), overlay)
 
 
+def _infer_plan_type(image: np.ndarray) -> str:
+    hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
+    grey = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    colourful = float(np.mean(hsv[:, :, 1] > 20))
+    tonal_variation = float(np.std(grey))
+    return "rendered" if colourful > 0.07 and tonal_variation > 28 else "blueprint"
+
+
 def analyze_floorplan(project_id: str, image_path: Path, request: AnalyzeRequest) -> SceneManifest:
     image = cv2.imread(str(image_path), cv2.IMREAD_COLOR)
     if image is None:
@@ -202,19 +246,35 @@ def analyze_floorplan(project_id: str, image_path: Path, request: AnalyzeRequest
 
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
     gray = cv2.GaussianBlur(gray, (3, 3), 0)
-    _, dark_mask = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
-    dark_mask = cv2.morphologyEx(dark_mask, cv2.MORPH_CLOSE, np.ones((3, 3), np.uint8), iterations=1)
-
+    plan_type = _infer_plan_type(image) if request.plan_type == "auto" else request.plan_type
     height, width = gray.shape
     minimum_dimension = min(width, height)
     metres_per_pixel = request.plan_width_m / width
     depth_m = height * metres_per_pixel
 
-    detail_config = {
-        "clean": (0.040, 0.075),
-        "balanced": (0.028, 0.055),
-        "detailed": (0.018, 0.038),
-    }
+    if plan_type == "rendered":
+        hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
+        saturation = hsv[:, :, 1]
+        value = hsv[:, :, 2]
+        structural_mask = (
+            (saturation < 42)
+            & (value > 80)
+            & (value < 238)
+        ).astype(np.uint8) * 255
+        detail_config = {
+            "clean": (0.050, 0.090),
+            "balanced": (0.038, 0.065),
+            "detailed": (0.026, 0.045),
+        }
+    else:
+        _, structural_mask = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
+        structural_mask = cv2.morphologyEx(structural_mask, cv2.MORPH_CLOSE, np.ones((3, 3), np.uint8), iterations=1)
+        detail_config = {
+            "clean": (0.040, 0.075),
+            "balanced": (0.028, 0.055),
+            "detailed": (0.018, 0.038),
+        }
+
     kernel_factor, length_factor = detail_config[request.wall_detection]
     directional_length = max(11, int(minimum_dimension * kernel_factor))
     minimum_length_px = max(
@@ -222,22 +282,22 @@ def analyze_floorplan(project_id: str, image_path: Path, request: AnalyzeRequest
         int(minimum_dimension * length_factor),
         18,
     )
-
-    horizontal_kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (directional_length, 1))
-    vertical_kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (1, directional_length))
-    horizontal_mask = cv2.morphologyEx(dark_mask, cv2.MORPH_OPEN, horizontal_kernel)
-    vertical_mask = cv2.morphologyEx(dark_mask, cv2.MORPH_OPEN, vertical_kernel)
+    cross_thickness = max(1, int(minimum_dimension * (0.006 if plan_type == "rendered" else 0.002)))
+    horizontal_kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (directional_length, cross_thickness))
+    vertical_kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (cross_thickness, directional_length))
+    horizontal_mask = cv2.morphologyEx(structural_mask, cv2.MORPH_OPEN, horizontal_kernel)
+    vertical_mask = cv2.morphologyEx(structural_mask, cv2.MORPH_OPEN, vertical_kernel)
 
     bridge = max(3, directional_length // 5)
     horizontal_mask = cv2.morphologyEx(
         horizontal_mask,
         cv2.MORPH_CLOSE,
-        cv2.getStructuringElement(cv2.MORPH_RECT, (bridge, 3)),
+        cv2.getStructuringElement(cv2.MORPH_RECT, (bridge, max(3, cross_thickness))),
     )
     vertical_mask = cv2.morphologyEx(
         vertical_mask,
         cv2.MORPH_CLOSE,
-        cv2.getStructuringElement(cv2.MORPH_RECT, (3, bridge)),
+        cv2.getStructuringElement(cv2.MORPH_RECT, (max(3, cross_thickness), bridge)),
     )
 
     horizontal_components = _component_centerlines(horizontal_mask, "horizontal", minimum_length_px)
@@ -245,10 +305,12 @@ def analyze_floorplan(project_id: str, image_path: Path, request: AnalyzeRequest
     components = horizontal_components + vertical_components
     component_thicknesses = [thickness for _line, thickness in components]
     estimated_thickness_px = int(np.percentile(component_thicknesses, 65)) if component_thicknesses else 5
-    thickness_ratio = {"clean": 0.35, "balanced": 0.22, "detailed": 0.0}[request.wall_detection]
-    minimum_component_thickness = max(2, int(round(estimated_thickness_px * thickness_ratio)))
+    base_ratio = {"clean": 0.42, "balanced": 0.25, "detailed": 0.0}[request.wall_detection]
+    if plan_type == "rendered":
+        base_ratio = max(base_ratio, 0.38)
+    minimum_component_thickness = max(2, int(round(estimated_thickness_px * base_ratio)))
     raw_lines = [line for line, thickness in components if thickness >= minimum_component_thickness]
-    merge_tolerance = max(4, min(18, estimated_thickness_px // 2 + 2))
+    merge_tolerance = max(4, min(20, estimated_thickness_px // 2 + 2))
     merged = _merge_lines(raw_lines, tolerance=merge_tolerance, gap=max(8, int(minimum_dimension * 0.014)))
     merged = _filter_structural_lines(
         merged,
@@ -256,6 +318,9 @@ def analyze_floorplan(project_id: str, image_path: Path, request: AnalyzeRequest
         request.wall_detection,
         connection_tolerance=max(8, estimated_thickness_px * 2),
     )
+    merged.sort(key=lambda line: math.hypot(line[2] - line[0], line[3] - line[1]), reverse=True)
+    wall_limit = 110 if plan_type == "rendered" else 220
+    merged = merged[:wall_limit]
 
     walls: list[WallSegment] = []
     for x1, y1, x2, y2 in merged:
@@ -270,15 +335,9 @@ def analyze_floorplan(project_id: str, image_path: Path, request: AnalyzeRequest
             thickness=request.wall_thickness_m,
         ))
 
-    # Rebuild a clean room mask from the accepted centre lines. This prevents text,
-    # furniture symbols and the two edges of a thick wall from becoming extra walls.
     wall_width_px = max(3, int(round(request.wall_thickness_m / metres_per_pixel)))
     door_gap_px = max(5, min(int(round(1.15 / metres_per_pixel)), int(minimum_dimension * 0.12)))
-    room_lines = _merge_lines(
-        merged,
-        tolerance=max(4, wall_width_px),
-        gap=door_gap_px,
-    )
+    room_lines = _merge_lines(merged, tolerance=max(4, wall_width_px), gap=door_gap_px)
     horizontal_room_mask = np.zeros_like(gray)
     vertical_room_mask = np.zeros_like(gray)
     for x1, y1, x2, y2 in room_lines:
@@ -286,7 +345,6 @@ def analyze_floorplan(project_id: str, image_path: Path, request: AnalyzeRequest
             cv2.line(horizontal_room_mask, (x1, y1), (x2, y2), 255, wall_width_px)
         else:
             cv2.line(vertical_room_mask, (x1, y1), (x2, y2), 255, wall_width_px)
-
     horizontal_room_mask = cv2.morphologyEx(
         horizontal_room_mask,
         cv2.MORPH_CLOSE,
@@ -299,9 +357,7 @@ def analyze_floorplan(project_id: str, image_path: Path, request: AnalyzeRequest
     )
     room_mask = cv2.bitwise_or(horizontal_room_mask, vertical_room_mask)
     junction_kernel = max(3, min(17, wall_width_px + 3))
-    room_mask = cv2.morphologyEx(
-        room_mask, cv2.MORPH_CLOSE, np.ones((junction_kernel, junction_kernel), np.uint8), iterations=1
-    )
+    room_mask = cv2.morphologyEx(room_mask, cv2.MORPH_CLOSE, np.ones((junction_kernel, junction_kernel), np.uint8), iterations=1)
     rooms = _detect_rooms(room_mask, metres_per_pixel)
 
     preview_path = image_path.parent / "structure-preview.png"
@@ -309,23 +365,29 @@ def analyze_floorplan(project_id: str, image_path: Path, request: AnalyzeRequest
 
     warnings: list[str] = []
     if not walls:
-        warnings.append("No reliable structural walls were detected. Try Balanced or Detailed mode, or upload a higher-contrast plan.")
+        warnings.append("No reliable structural walls were detected. Start Manual Layout and trace rooms over the plan.")
     if not rooms:
-        warnings.append("No closed room regions were detected. Check the structure overlay and plan scale.")
-    if len(walls) > 180:
-        warnings.append("A high wall count remains. Switch to Clean mode or increase the minimum wall length.")
-    warnings.append("Green lines in the structure overlay are the exact wall centre lines used for the 3D model.")
+        warnings.append("No closed rooms were detected. Use Edit Rooms to add and size rooms manually.")
+    if plan_type == "rendered":
+        warnings.append("Rendered-plan mode ignores most furniture and texture edges; verify the result in Edit Rooms.")
+    if len(walls) > 90:
+        warnings.append("A high wall count remains. Increase minimum wall length or switch to manual room tracing.")
+    warnings.append("The uploaded plan was cropped to its building content so the model origin and scale align correctly.")
 
     return SceneManifest(
         project_id=project_id,
         width_m=round(request.plan_width_m, 3),
         depth_m=round(depth_m, 3),
         wall_height_m=request.wall_height_m,
-        walls=walls[:240],
+        walls=walls,
         rooms=rooms,
         assets=[],
         camera_path=[],
+        reference_image_url=f"/api/v1/projects/{project_id}/files/working/floorplan.png",
+        reference_image_path=str(image_path),
         detection_preview_url=f"/api/v1/projects/{project_id}/files/working/structure-preview.png",
         wall_detection_mode=request.wall_detection,
+        plan_type=plan_type,
+        layout_mode="automatic",
         warnings=warnings,
     )
