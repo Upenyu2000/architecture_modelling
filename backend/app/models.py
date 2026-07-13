@@ -91,6 +91,22 @@ class CreateProjectRequest(BaseModel):
     name: str = "My Dream Home"
 
 
+class SaveSlotRequest(BaseModel):
+    name: str = Field(default="Saved Build", min_length=1, max_length=80)
+
+
+class SaveSlotSummary(BaseModel):
+    id: str
+    name: str
+    created_at: str
+    updated_at: str
+    status: str
+    floorplan_filename: str | None = None
+    preview_url: str | None = None
+    asset_count: int = 0
+    has_scene: bool = False
+
+
 class AnalyzeRequest(BaseModel):
     plan_width_m: float = Field(default=14.0, gt=1, le=500)
     wall_height_m: float = Field(default=2.8, ge=2.0, le=8.0)
