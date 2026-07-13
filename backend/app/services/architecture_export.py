@@ -85,7 +85,8 @@ def production_architecture_payload(scene: SceneManifest) -> dict[str, Any]:
         "project_metadata": {
             "project_id": scene.project_id,
             "scale_ratio": scene.project_metadata.scale_ratio,
-            "scale_ratio_px_to_meter": round(scene.width_m / max(1.0, scene.width_m), 6),
+            "scale_ratio_px_to_meter": None,
+            "scale_note": "Use scale_ratio when calibrated. Pixel dimensions are intentionally omitted when the source image size is unavailable.",
             "width_m": scene.width_m,
             "depth_m": scene.depth_m,
             "wall_height_m": scene.wall_height_m,
