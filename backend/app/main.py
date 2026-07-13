@@ -9,21 +9,22 @@ from fastapi.responses import FileResponse
 
 from .config import APP_NAME, PROJECTS_DIR, ensure_directories, load_settings, save_settings
 from .models import (
-    AnalyzeRequest, AssetFile, CreateProjectRequest, FloorplanFile, Job, Project,
-    RenderRequest, RoomUpdateRequest, SaveSlotRequest, SaveSlotSummary,
-    SceneManifest, WalkthroughRequest,
+    AnalyzeRequest, AssetFile, BuildingModelFile, CreateProjectRequest, DrawingRequest,
+    FloorplanFile, Job, Project, RenderRequest, RoomUpdateRequest, SaveSlotRequest,
+    SaveSlotSummary, SceneManifest, WalkthroughRequest,
 )
 from .storage import (
     create_project, create_save_slot, delete_save_slot, list_save_slots, load_project,
     project_dir, reset_project, restore_save_slot, save_project, save_upload, write_json,
 )
+from .services.drawings import generate_drawing_set
 from .services.floorplan import analyze_floorplan, rasterize_floorplan
 from .services.jobs import create_job, get_job, submit
 from .services.providers import reconstruct_image_to_3d
 from .services.rendering import blender_render, technical_render
 from .services.scene import apply_assets
 
-app = FastAPI(title=f"{APP_NAME} Local API", version="1.0.4")
+app = FastAPI(title=f"{APP_NAME} Local API", version="1.1.0")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://127.0.0.1:5173", "http://localhost:5173", "null"],
@@ -43,7 +44,7 @@ def project_or_404(project_id: str) -> Project:
 
 @app.get("/health")
 def health() -> dict[str, Any]:
-    return {"status": "ok", "service": APP_NAME, "version": "1.0.4"}
+    return {"status": "ok", "service": APP_NAME, "version": "1.1.0"}
 
 
 @app.get("/api/v1/projects", response_model=list[Project])
@@ -131,6 +132,58 @@ async def upload_floorplan(project_id: str, file: UploadFile = File(...)) -> Pro
     project.scene = None
     project.status = "floorplan_uploaded"
     return save_project(project)
+
+
+@app.post("/api/v1/projects/{project_id}/building-model", response_model=Project)
+async def upload_building_model(project_id: str, file: UploadFile = File(...)) -> Project:
+    project = project_or_404(project_id)
+    suffix = Path(file.filename or "").suffix.lower()
+    if suffix not in {".glb", ".obj", ".stl", ".ply"}:
+        raise HTTPException(status_code=415, detail="3D building model must be GLB, OBJ, STL or PLY")
+    destination = await save_upload(project_id, file, "uploads", "building-")
+    project.building_model = BuildingModelFile(
+        filename=destination.name,
+        path=str(destination),
+        url=f"/api/v1/projects/{project_id}/files/uploads/{destination.name}",
+        format=suffix.lstrip("."),
+        size_bytes=destination.stat().st_size,
+    )
+    project.drawing_set = None
+    project.status = "building_model_uploaded"
+    return save_project(project)
+
+
+@app.post("/api/v1/projects/{project_id}/drawings", response_model=Job)
+def create_drawings(project_id: str, request: DrawingRequest) -> Job:
+    project = project_or_404(project_id)
+    if not project.building_model:
+        raise HTTPException(status_code=409, detail="Upload a 3D building model first")
+
+    job = create_job(project_id, "drawing_set")
+    output_dir = project_dir(project_id) / "outputs" / f"drawings-{job.id[:8]}"
+    archive = output_dir.with_suffix(".zip")
+    url_prefix = f"/api/v1/projects/{project_id}/files/outputs/{output_dir.name}"
+    archive_url = f"/api/v1/projects/{project_id}/files/outputs/{archive.name}"
+    model_path = Path(project.building_model.path)
+    source_filename = project.building_model.filename
+
+    def task(progress):
+        drawing_set, generated_archive = generate_drawing_set(
+            project_id=project_id,
+            model_path=model_path,
+            source_filename=source_filename,
+            output_dir=output_dir,
+            url_prefix=url_prefix,
+            request=request,
+            progress=progress,
+        )
+        current = load_project(project_id)
+        current.drawing_set = drawing_set
+        current.status = "drawings_generated"
+        save_project(current)
+        return generated_archive, archive_url, {"drawing_set": drawing_set.model_dump(mode="json")}
+
+    return submit(job, task)
 
 
 @app.post("/api/v1/projects/{project_id}/assets/{category}/{slot}", response_model=Project)
