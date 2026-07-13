@@ -3,14 +3,18 @@ from __future__ import annotations
 from typing import Any
 
 from .config import APP_NAME
-from .main import app
+from . import main as main_module
 from .architecture_api import router as architecture_router
 from .opening_api import router as opening_router
 from .interior_api import router as interior_router
+from .services.rendering_v15 import blender_render as detailed_blender_render
 
 
 APP_VERSION = "1.5.0"
+app = main_module.app
 app.version = APP_VERSION
+main_module.APP_VERSION = APP_VERSION
+main_module.blender_render = detailed_blender_render
 
 
 def _has_route(path: str) -> bool:
