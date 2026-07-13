@@ -1,4 +1,7 @@
 export type AssetCategory = 'flooring' | 'walls' | 'kitchen' | 'living_room' | 'bathroom';
+export type WallDetectionMode = 'clean' | 'balanced' | 'detailed';
+export type ModelUnits = 'auto' | 'metres' | 'millimetres' | 'centimetres' | 'feet';
+export type UpAxis = 'y' | 'z';
 
 export interface WallSegment {
   id: string;
@@ -40,6 +43,35 @@ export interface SceneManifest {
   camera_path: [number, number, number][];
   floor_texture_url?: string | null;
   wall_texture_url?: string | null;
+  detection_preview_url?: string | null;
+  wall_detection_mode?: WallDetectionMode;
+  warnings: string[];
+}
+
+export interface BuildingModelFile {
+  filename: string;
+  url: string;
+  format: string;
+  size_bytes: number;
+}
+
+export interface DrawingFile {
+  kind: string;
+  format: string;
+  filename: string;
+  path: string;
+  url: string;
+}
+
+export interface DrawingSet {
+  project_id: string;
+  source_filename: string;
+  created_at: string;
+  slice_height_m: number;
+  up_axis: UpAxis;
+  model_units: string;
+  bounds_m: [number, number, number];
+  files: DrawingFile[];
   warnings: string[];
 }
 
@@ -49,9 +81,11 @@ export interface Project {
   created_at: string;
   updated_at: string;
   floorplan?: { filename: string; preview_url: string } | null;
+  building_model?: BuildingModelFile | null;
   assets: Record<string, { filename: string; url: string; status: string }>;
   status: string;
   scene?: SceneManifest | null;
+  drawing_set?: DrawingSet | null;
 }
 
 export interface SaveSlot {
@@ -61,9 +95,11 @@ export interface SaveSlot {
   updated_at: string;
   status: string;
   floorplan_filename?: string | null;
+  building_model_filename?: string | null;
   preview_url?: string | null;
   asset_count: number;
   has_scene: boolean;
+  has_drawings?: boolean;
 }
 
 export interface Job {
@@ -75,6 +111,8 @@ export interface Job {
   message: string;
   output_url?: string | null;
   output_path?: string | null;
+  error?: string | null;
+  metadata?: Record<string, unknown>;
   created_at: string;
   updated_at: string;
 }
