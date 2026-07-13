@@ -1,0 +1,304 @@
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { DoorOpen, Plus, Save, Trash2 } from 'lucide-react';
+import type { Opening, OpeningPayload, OpeningType, SceneManifest, WallSegment } from '../types';
+
+interface Props {
+  scene: SceneManifest;
+  referenceUrl?: string;
+  busy: boolean;
+  onAddOpening: (payload: OpeningPayload) => Promise<void>;
+  onUpdateOpening: (openingId: string, payload: Partial<OpeningPayload>) => Promise<void>;
+  onDeleteOpening: (openingId: string) => Promise<void>;
+}
+
+interface LibraryItem {
+  value: OpeningType;
+  label: string;
+  group: 'Doors' | 'Windows' | 'Openings';
+  width: number;
+  height: number;
+}
+
+export const OPENING_LIBRARY: LibraryItem[] = [
+  { value: 'door', label: 'Single hinged door', group: 'Doors', width: 0.9, height: 2.1 },
+  { value: 'double_door', label: 'Double door', group: 'Doors', width: 1.8, height: 2.1 },
+  { value: 'pocket_door', label: 'Pocket door', group: 'Doors', width: 0.9, height: 2.1 },
+  { value: 'double_pocket_door', label: 'Double pocket door', group: 'Doors', width: 1.8, height: 2.1 },
+  { value: 'bypass_door', label: 'Bypass sliding door', group: 'Doors', width: 1.5, height: 2.1 },
+  { value: 'sliding_door', label: 'Sliding door', group: 'Doors', width: 1.5, height: 2.2 },
+  { value: 'double_sliding_door', label: 'Double sliding door', group: 'Doors', width: 2.4, height: 2.2 },
+  { value: 'sliding_glass_door', label: 'Sliding glass door', group: 'Doors', width: 2.2, height: 2.2 },
+  { value: 'bifold_door', label: 'Bi-fold door', group: 'Doors', width: 0.9, height: 2.1 },
+  { value: 'double_bifold_door', label: 'Double bi-fold door', group: 'Doors', width: 1.8, height: 2.1 },
+  { value: 'folding_door', label: 'Folding / accordion door', group: 'Doors', width: 1.5, height: 2.1 },
+  { value: 'overhead_door', label: 'Overhead / garage door', group: 'Doors', width: 2.4, height: 2.3 },
+  { value: 'revolving_door', label: 'Revolving door', group: 'Doors', width: 2.1, height: 2.3 },
+  { value: 'open_passage', label: 'Archway / wall opening', group: 'Openings', width: 1.2, height: 2.2 },
+  { value: 'fixed_window', label: 'Fixed window', group: 'Windows', width: 1.2, height: 1.2 },
+  { value: 'casement_window', label: 'Single casement window', group: 'Windows', width: 0.9, height: 1.2 },
+  { value: 'double_casement_window', label: 'Double casement window', group: 'Windows', width: 1.6, height: 1.2 },
+  { value: 'glider_window', label: 'Glider window', group: 'Windows', width: 1.4, height: 1.2 },
+  { value: 'garden_window', label: 'Garden window', group: 'Windows', width: 1.6, height: 1.2 },
+  { value: 'bay_window', label: 'Bay window', group: 'Windows', width: 2.0, height: 1.35 },
+  { value: 'bow_window', label: 'Bow window', group: 'Windows', width: 2.4, height: 1.35 },
+  { value: 'double_hung_window', label: 'Double-hung window', group: 'Windows', width: 1.0, height: 1.3 },
+  { value: 'vertical_sliding_window', label: 'Vertical sliding window', group: 'Windows', width: 0.9, height: 1.3 },
+  { value: 'horizontal_sliding_window', label: 'Horizontal sliding window', group: 'Windows', width: 1.5, height: 1.1 },
+];
+
+const WINDOW_TYPES = new Set<OpeningType>(OPENING_LIBRARY.filter((item) => item.group === 'Windows').map((item) => item.value));
+const PASSIVE_TYPES = new Set<OpeningType>([
+  ...WINDOW_TYPES,
+  'open_passage',
+]);
+
+function itemFor(type: OpeningType): LibraryItem {
+  return OPENING_LIBRARY.find((item) => item.value === type)
+    ?? { value: type, label: type.replaceAll('_', ' '), group: 'Doors', width: 0.9, height: 2.1 };
+}
+
+function initialPayload(scene: SceneManifest): OpeningPayload {
+  const item = OPENING_LIBRARY[0];
+  return {
+    opening_type: item.value,
+    wall_id: scene.walls[0]?.id ?? '',
+    placement_ratio: 0.5,
+    width: item.width,
+    height: item.height,
+    swing_direction: 'clockwise',
+    hinge_side: 'left',
+    swing_angle_deg: 90,
+    sill_height: 0.9,
+    interactive: true,
+    default_open: false,
+  };
+}
+
+function payloadFromOpening(opening: Opening): OpeningPayload {
+  return {
+    opening_type: opening.opening_type,
+    wall_id: opening.wall_id ?? '',
+    placement_ratio: opening.placement_ratio ?? 0.5,
+    width: opening.width,
+    height: opening.height,
+    swing_direction: opening.swing_direction,
+    hinge_side: opening.hinge_side,
+    swing_angle_deg: opening.swing_angle_deg,
+    sill_height: opening.sill_height,
+    interactive: opening.interactive,
+    default_open: opening.default_open,
+  };
+}
+
+function projectRatio(wall: WallSegment, point: [number, number]): number {
+  const dx = wall.end[0] - wall.start[0];
+  const dz = wall.end[1] - wall.start[1];
+  const lengthSquared = dx * dx + dz * dz;
+  if (lengthSquared < 1e-8) return 0.5;
+  return Math.max(0, Math.min(1, ((point[0] - wall.start[0]) * dx + (point[1] - wall.start[1]) * dz) / lengthSquared));
+}
+
+function openingColour(opening: Opening): string {
+  if (WINDOW_TYPES.has(opening.opening_type)) return '#78c8ef';
+  if (opening.opening_type === 'open_passage') return '#d7a861';
+  return opening.source === 'manual' ? '#77e19d' : '#f0c66a';
+}
+
+export function OpeningEditor({ scene, referenceUrl, busy, onAddOpening, onUpdateOpening, onDeleteOpening }: Props) {
+  const svgRef = useRef<SVGSVGElement | null>(null);
+  const [selectedOpeningId, setSelectedOpeningId] = useState<string | null>(null);
+  const [draft, setDraft] = useState<OpeningPayload>(() => initialPayload(scene));
+
+  const selectedOpening = scene.openings.find((item) => item.id === selectedOpeningId) ?? null;
+  const selectedWall = scene.walls.find((item) => item.id === draft.wall_id) ?? null;
+  const grouped = useMemo(() => ['Doors', 'Windows', 'Openings'] as const, []);
+
+  useEffect(() => {
+    if (selectedOpening) setDraft(payloadFromOpening(selectedOpening));
+  }, [selectedOpening?.id]);
+
+  useEffect(() => {
+    if (!scene.walls.some((wall) => wall.id === draft.wall_id)) {
+      setDraft((current) => ({ ...current, wall_id: scene.walls[0]?.id ?? '' }));
+    }
+    if (selectedOpeningId && !scene.openings.some((opening) => opening.id === selectedOpeningId)) {
+      setSelectedOpeningId(null);
+    }
+  }, [scene.walls, scene.openings, draft.wall_id, selectedOpeningId]);
+
+  const scenePoint = (event: React.PointerEvent<SVGElement>): [number, number] | null => {
+    const svg = svgRef.current;
+    if (!svg) return null;
+    const matrix = svg.getScreenCTM();
+    if (!matrix) return null;
+    const point = new DOMPoint(event.clientX, event.clientY).matrixTransform(matrix.inverse());
+    return [point.x, point.y];
+  };
+
+  const chooseWall = (wall: WallSegment, event: React.PointerEvent<SVGLineElement>) => {
+    event.stopPropagation();
+    const point = scenePoint(event);
+    setSelectedOpeningId(null);
+    setDraft((current) => ({
+      ...current,
+      wall_id: wall.id,
+      placement_ratio: point ? projectRatio(wall, point) : 0.5,
+    }));
+  };
+
+  const chooseType = (type: OpeningType) => {
+    const item = itemFor(type);
+    const passive = PASSIVE_TYPES.has(type);
+    setDraft((current) => ({
+      ...current,
+      opening_type: type,
+      width: item.width,
+      height: item.height,
+      swing_direction: passive ? 'none' : current.swing_direction === 'none' ? 'clockwise' : current.swing_direction,
+      hinge_side: passive ? 'none' : current.hinge_side === 'none' ? 'left' : current.hinge_side,
+      interactive: !passive,
+      default_open: type === 'open_passage',
+      sill_height: WINDOW_TYPES.has(type) ? Math.max(0.6, current.sill_height) : 0,
+    }));
+  };
+
+  const add = async () => {
+    if (!draft.wall_id) return;
+    await onAddOpening(draft);
+  };
+
+  const save = async () => {
+    if (!selectedOpening) return;
+    await onUpdateOpening(selectedOpening.id, draft);
+  };
+
+  const remove = async () => {
+    if (!selectedOpening) return;
+    if (!window.confirm(`Delete ${itemFor(selectedOpening.opening_type).label}?`)) return;
+    await onDeleteOpening(selectedOpening.id);
+    setSelectedOpeningId(null);
+  };
+
+  return (
+    <div className="opening-editor">
+      <div className="opening-stage">
+        <svg ref={svgRef} viewBox={`0 0 ${scene.width_m} ${scene.depth_m}`} preserveAspectRatio="xMidYMid meet">
+          {referenceUrl ? <image href={referenceUrl} x="0" y="0" width={scene.width_m} height={scene.depth_m} opacity="0.58" preserveAspectRatio="none" /> : null}
+          {scene.rooms.map((room) => (
+            <polygon key={room.id} points={room.polygon.map(([x, z]) => `${x},${z}`).join(' ')} className="opening-room" />
+          ))}
+          {scene.walls.map((wall, index) => (
+            <g key={wall.id}>
+              <line
+                x1={wall.start[0]}
+                y1={wall.start[1]}
+                x2={wall.end[0]}
+                y2={wall.end[1]}
+                className={wall.id === draft.wall_id ? 'opening-wall selected' : 'opening-wall'}
+                onPointerDown={(event) => chooseWall(wall, event)}
+              />
+              <text x={(wall.start[0] + wall.end[0]) / 2} y={(wall.start[1] + wall.end[1]) / 2} className="wall-index">W{index + 1}</text>
+            </g>
+          ))}
+          {scene.openings.map((opening) => {
+            const rotation = opening.rotation_deg * Math.PI / 180;
+            const dx = Math.cos(rotation) * opening.width / 2;
+            const dz = Math.sin(rotation) * opening.width / 2;
+            return (
+              <g
+                key={opening.id}
+                className={opening.id === selectedOpeningId ? 'opening-symbol selected' : 'opening-symbol'}
+                onPointerDown={(event) => {
+                  event.stopPropagation();
+                  setSelectedOpeningId(opening.id);
+                  setDraft(payloadFromOpening(opening));
+                }}
+              >
+                <line
+                  x1={opening.position[0] - dx}
+                  y1={opening.position[1] - dz}
+                  x2={opening.position[0] + dx}
+                  y2={opening.position[1] + dz}
+                  stroke={openingColour(opening)}
+                />
+                <circle cx={opening.position[0]} cy={opening.position[1]} r={Math.max(0.08, Math.min(scene.width_m, scene.depth_m) * 0.009)} fill={openingColour(opening)} />
+                <text x={opening.position[0]} y={opening.position[1] - 0.16}>{itemFor(opening.opening_type).label}</text>
+              </g>
+            );
+          })}
+        </svg>
+        {!scene.walls.length ? <div className="opening-empty">Detect or draw walls before adding doors and windows.</div> : null}
+      </div>
+
+      <aside className="opening-controls">
+        <div className="opening-heading">
+          <DoorOpen size={20} />
+          <div><strong>Doors, windows and passages</strong><span>Click a wall to position the new feature.</span></div>
+        </div>
+
+        <label>Feature type
+          <select value={draft.opening_type} onChange={(event) => chooseType(event.target.value as OpeningType)}>
+            {grouped.map((group) => (
+              <optgroup key={group} label={group}>
+                {OPENING_LIBRARY.filter((item) => item.group === group).map((item) => (
+                  <option key={item.value} value={item.value}>{item.label}</option>
+                ))}
+              </optgroup>
+            ))}
+          </select>
+        </label>
+
+        <label>Parent wall
+          <select value={draft.wall_id} onChange={(event) => setDraft((current) => ({ ...current, wall_id: event.target.value }))}>
+            {scene.walls.map((wall, index) => <option key={wall.id} value={wall.id}>Wall {index + 1} · {wall.wall_type}</option>)}
+          </select>
+        </label>
+
+        <label>Position along wall <span>{Math.round(draft.placement_ratio * 100)}%</span>
+          <input type="range" min="0" max="1" step="0.01" value={draft.placement_ratio} onChange={(event) => setDraft((current) => ({ ...current, placement_ratio: Number(event.target.value) }))} />
+        </label>
+
+        <div className="opening-number-grid">
+          <label>Width (m)<input type="number" min="0.2" step="0.05" value={draft.width ?? 0.9} onChange={(event) => setDraft((current) => ({ ...current, width: Number(event.target.value) }))} /></label>
+          <label>Height (m)<input type="number" min="0.2" step="0.05" value={draft.height ?? 2.1} onChange={(event) => setDraft((current) => ({ ...current, height: Number(event.target.value) }))} /></label>
+          {WINDOW_TYPES.has(draft.opening_type) ? <label>Sill (m)<input type="number" min="0" step="0.05" value={draft.sill_height} onChange={(event) => setDraft((current) => ({ ...current, sill_height: Number(event.target.value) }))} /></label> : null}
+          {!PASSIVE_TYPES.has(draft.opening_type) ? <label>Open angle<input type="number" min="0" max="180" step="5" value={draft.swing_angle_deg} onChange={(event) => setDraft((current) => ({ ...current, swing_angle_deg: Number(event.target.value) }))} /></label> : null}
+        </div>
+
+        {!PASSIVE_TYPES.has(draft.opening_type) ? (
+          <div className="opening-number-grid">
+            <label>Hinge
+              <select value={draft.hinge_side} onChange={(event) => setDraft((current) => ({ ...current, hinge_side: event.target.value as OpeningPayload['hinge_side'] }))}>
+                <option value="left">Left</option><option value="right">Right</option><option value="centre">Centre</option>
+              </select>
+            </label>
+            <label>Swing
+              <select value={draft.swing_direction} onChange={(event) => setDraft((current) => ({ ...current, swing_direction: event.target.value as OpeningPayload['swing_direction'] }))}>
+                <option value="clockwise">Clockwise</option><option value="counterclockwise">Counterclockwise</option><option value="none">No swing</option>
+              </select>
+            </label>
+          </div>
+        ) : null}
+
+        {!PASSIVE_TYPES.has(draft.opening_type) ? (
+          <>
+            <label className="checkbox-row"><input type="checkbox" checked={draft.interactive} onChange={(event) => setDraft((current) => ({ ...current, interactive: event.target.checked }))} /> Interactive in first person</label>
+            <label className="checkbox-row"><input type="checkbox" checked={draft.default_open} onChange={(event) => setDraft((current) => ({ ...current, default_open: event.target.checked }))} /> Start open</label>
+          </>
+        ) : null}
+
+        <div className="opening-actions">
+          <button className="primary" disabled={busy || !selectedWall} onClick={() => void add()}><Plus size={16} /> Add feature</button>
+          <button className="secondary" disabled={busy || !selectedOpening} onClick={() => void save()}><Save size={16} /> Save selected</button>
+          <button className="danger-icon" disabled={busy || !selectedOpening} onClick={() => void remove()}><Trash2 size={16} /> Delete</button>
+        </div>
+
+        <div className="opening-legend">
+          <span><i className="manual-opening" /> Manual</span>
+          <span><i className="detected-opening" /> AI detected</span>
+          <span><i className="window-opening" /> Window</span>
+        </div>
+      </aside>
+    </div>
+  );
+}
