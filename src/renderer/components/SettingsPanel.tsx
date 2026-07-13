@@ -2,15 +2,17 @@ import { useEffect, useState } from 'react';
 import { Cpu, FolderOpen, Save } from 'lucide-react';
 import { api } from '../lib/api';
 
+type SettingValue = string | boolean | number;
+
 export function SettingsPanel() {
-  const [settings, setSettings] = useState<Record<string, string | boolean>>({});
+  const [settings, setSettings] = useState<Record<string, SettingValue>>({});
   const [saved, setSaved] = useState(false);
 
   useEffect(() => { api.getSettings().then(setSettings).catch(() => undefined); }, []);
 
-  const update = (key: string, value: string | boolean) => setSettings((current) => ({ ...current, [key]: value }));
-  const browseExecutable = async (key: string, name: string) => {
-    const selected = await window.desktop?.selectFile([{ name, extensions: ['exe'] }]);
+  const update = (key: string, value: SettingValue) => setSettings((current) => ({ ...current, [key]: value }));
+  const browseFile = async (key: string, name: string, extensions: string[]) => {
+    const selected = await window.desktop?.selectFile([{ name, extensions }]);
     if (selected) update(key, selected);
   };
   const save = async () => {
@@ -21,20 +23,40 @@ export function SettingsPanel() {
 
   return (
     <details className="settings-panel">
-      <summary><Cpu size={17} /> AI, OCR and render settings</summary>
+      <summary><Cpu size={17} /> AI, OCR, training and render settings</summary>
       <div className="settings-grid">
+        <label>
+          Local floor-plan segmentation model
+          <div className="input-with-button">
+            <input value={String(settings.segmentation_model_path ?? '')} onChange={(e) => update('segmentation_model_path', e.target.value)} placeholder="Optional ONNX model: background, wall, room, door, window" />
+            <button onClick={() => void browseFile('segmentation_model_path', 'ONNX segmentation model', ['onnx'])}><FolderOpen size={16} /></button>
+          </div>
+          <small>When configured, this model guides wall, room, door and window extraction before the deterministic vector-cleaning stage.</small>
+        </label>
+        <label>
+          Segmentation input size
+          <input type="number" min="128" max="2048" step="32" value={Number(settings.segmentation_input_size ?? 512)} onChange={(e) => update('segmentation_input_size', Number(e.target.value) || 512)} />
+        </label>
+        <label>
+          Segmentation confidence threshold
+          <input type="number" min="0.05" max="0.95" step="0.05" value={Number(settings.segmentation_threshold ?? 0.5)} onChange={(e) => update('segmentation_threshold', Number(e.target.value) || 0.5)} />
+        </label>
+        <label>
+          Training workspace
+          <input value={String(settings.training_workspace ?? '')} onChange={(e) => update('training_workspace', e.target.value)} placeholder="Optional local folder containing prepared datasets and exported models" />
+        </label>
         <label>
           Blender executable
           <div className="input-with-button">
             <input value={String(settings.blender_executable ?? '')} onChange={(e) => update('blender_executable', e.target.value)} placeholder="Auto-detect or choose blender.exe" />
-            <button onClick={() => void browseExecutable('blender_executable', 'Blender')}><FolderOpen size={16} /></button>
+            <button onClick={() => void browseFile('blender_executable', 'Blender', ['exe'])}><FolderOpen size={16} /></button>
           </div>
         </label>
         <label>
           Tesseract OCR executable
           <div className="input-with-button">
             <input value={String(settings.tesseract_executable ?? '')} onChange={(e) => update('tesseract_executable', e.target.value)} placeholder="Optional tesseract.exe for room labels and dimensions" />
-            <button onClick={() => void browseExecutable('tesseract_executable', 'Tesseract OCR')}><FolderOpen size={16} /></button>
+            <button onClick={() => void browseFile('tesseract_executable', 'Tesseract OCR', ['exe'])}><FolderOpen size={16} /></button>
           </div>
         </label>
         <label>
