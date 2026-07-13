@@ -34,6 +34,8 @@ Push-Location $Backend
 try {
     & $Python -m tests.smoke_freeform
     if ($LASTEXITCODE -ne 0) { throw "Free-form geometry smoke test failed." }
+    & $Python -m tests.smoke_openings
+    if ($LASTEXITCODE -ne 0) { throw "Interactive opening smoke test failed." }
 } finally {
     Pop-Location
 }
@@ -55,8 +57,12 @@ try {
         --add-data "app\prompts;app\prompts" `
         --add-data "app\blender;app\blender" `
         --hidden-import app.main `
+        --hidden-import app.asgi `
         --hidden-import app.architecture_api `
+        --hidden-import app.opening_api `
         --hidden-import app.services.architecture `
+        --hidden-import app.services.openings `
+        --hidden-import app.services.opening_symbols `
         --hidden-import app.services.segmentation `
         --hidden-import app.services.training_data `
         --hidden-import app.services.drawings `
@@ -104,6 +110,10 @@ try {
         try {
             $Response = Invoke-WebRequest -UseBasicParsing -Uri "http://127.0.0.1:$TestPort/health" -TimeoutSec 2
             if ($Response.StatusCode -eq 200) {
+                $Payload = $Response.Content | ConvertFrom-Json
+                if ($Payload.version -ne "1.4.0") {
+                    throw "Packaged backend reported version $($Payload.version), expected 1.4.0."
+                }
                 $Healthy = $true
                 break
             }
@@ -129,5 +139,5 @@ if (-not $Healthy) {
 
 Remove-Item -Recurse -Force $TestData -ErrorAction SilentlyContinue
 Remove-Item -Force $StdOut, $StdErr -ErrorAction SilentlyContinue
-Write-Host "Packaged backend health check passed."
+Write-Host "Packaged backend health check passed with version 1.4.0."
 Write-Host "Backend built at backend\dist\dreamhome-ai.exe"
