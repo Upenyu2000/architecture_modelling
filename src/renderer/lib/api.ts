@@ -1,6 +1,6 @@
 import type {
-  AssetCategory, Job, MaterialUpdate, ModelUnits, PlanType, Project, SaveSlot, SceneManifest,
-  UpAxis, WallDetectionMode,
+  AssetCategory, Job, MaterialUpdate, ModelUnits, OpeningPayload, PlanType, Project, SaveSlot,
+  SceneManifest, UpAxis, WallDetectionMode,
 } from '../types';
 
 export type AppSettingValue = string | boolean | number;
@@ -173,6 +173,20 @@ export const api = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name }),
     }),
+  addOpening: (id: string, opening: OpeningPayload) =>
+    request<SceneManifest>(`/api/v1/projects/${id}/openings`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(opening),
+    }),
+  updateOpening: (id: string, openingId: string, opening: Partial<OpeningPayload>) =>
+    request<SceneManifest>(`/api/v1/projects/${id}/openings/${openingId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(opening),
+    }),
+  deleteOpening: (id: string, openingId: string) =>
+    request<SceneManifest>(`/api/v1/projects/${id}/openings/${openingId}`, { method: 'DELETE' }),
   render: (id: string, quality: 'preview' | '1080p' | '4k', engine: 'auto' | 'technical' | 'blender') =>
     request<Job>(`/api/v1/projects/${id}/render`, {
       method: 'POST',
