@@ -10,8 +10,8 @@ import { ModelDrawingPanel } from './components/ModelDrawingPanel';
 import { ArchitecturePanel } from './components/ArchitecturePanel';
 import { absoluteUrl, api, initApi } from './lib/api';
 import type {
-  AssetCategory, Job, MaterialUpdate, ModelUnits, PlanType, Project, SaveSlot, UpAxis,
-  WallDetectionMode,
+  AssetCategory, Job, MaterialUpdate, ModelUnits, OpeningPayload, PlanType, Project, SaveSlot,
+  UpAxis, WallDetectionMode,
 } from './types';
 
 type Point = [number, number];
@@ -114,7 +114,7 @@ function App() {
       setNotice(
         useVisionAi
           ? 'Architectural scene compiled. The configured vision service was used only if private remote processing was enabled.'
-          : 'Architectural scene compiled with walls, openings, fixtures, materials, collision data and walkthrough coordinates.',
+          : 'Architectural scene compiled with walls, classified openings, fixtures, collision data and walkthrough coordinates.',
       );
     });
   };
@@ -140,7 +140,7 @@ function App() {
       false,
     );
     setProject((current) => current ? { ...current, scene, status: 'architecture_compiled' } : current);
-    setNotice('Analysis and production compilation complete. Verify the cutaway, first-person view, data and room editor.');
+    setNotice('Analysis and production compilation complete. Verify rooms, doors, windows, cutaway and first-person interaction.');
   });
 
   const applyMaterials = async (settings: MaterialUpdate) => {
@@ -161,7 +161,7 @@ function App() {
     await run(async () => {
       const scene = await api.startManualLayout(project!.id, planWidth, wallHeight, true);
       setProject((current) => current ? { ...current, scene, status: 'manual_layout' } : current);
-      setNotice('Manual room layout started. Open Edit Rooms, add rooms, then drag and resize them over the plan. Compile the production scene when finished.');
+      setNotice('Manual room layout started. Draw rooms first, then use Doors & Windows to add interactive openings.');
     });
   };
 
@@ -194,6 +194,27 @@ function App() {
     if (!project) return;
     const scene = await api.updateRoom(project.id, roomId, name);
     setProject((current) => current ? { ...current, scene } : current);
+  };
+
+  const addOpening = async (payload: OpeningPayload) => {
+    if (!project) return;
+    const scene = await api.addOpening(project.id, payload);
+    setProject((current) => current ? { ...current, scene, status: 'openings_updated' } : current);
+    setNotice('Door, window or passage added. Open First Person and press E near an interactive door.');
+  };
+
+  const updateOpening = async (openingId: string, payload: Partial<OpeningPayload>) => {
+    if (!project) return;
+    const scene = await api.updateOpening(project.id, openingId, payload);
+    setProject((current) => current ? { ...current, scene, status: 'openings_updated' } : current);
+    setNotice('Opening updated and the wall cut-out was rebuilt.');
+  };
+
+  const deleteOpening = async (openingId: string) => {
+    if (!project) return;
+    const scene = await api.deleteOpening(project.id, openingId);
+    setProject((current) => current ? { ...current, scene, status: 'openings_updated' } : current);
+    setNotice('Opening removed.');
   };
 
   const saveCurrentBuild = () => run(async () => {
@@ -387,7 +408,7 @@ function App() {
             </div>
             <button className="primary" disabled={busy || !project?.floorplan} onClick={analyze}><Sparkles size={18} /> Analyze, classify and compile</button>
             <button className="secondary full-width" disabled={busy || !project?.floorplan} onClick={() => void startManualLayout()}><Edit3 size={18} /> Start blank manual room layout</button>
-            <span className="manual-note">Manual rooms can be added, removed, dragged and resized in the Edit Rooms view.</span>
+            <span className="manual-note">Use Edit Rooms for free-form geometry and Doors & Windows for manual opening placement.</span>
           </section>
 
           <ArchitecturePanel
@@ -414,12 +435,15 @@ function App() {
             onUpdateRoom={updateRoomGeometry}
             onDeleteRoom={deleteRoom}
             onRenameRoom={renameRoom}
+            onAddOpening={addOpening}
+            onUpdateOpening={updateOpening}
+            onDeleteOpening={deleteOpening}
           />
           <section className="output-panel">
             <div className="output-copy">
               <span className="eyebrow">5. Output</span>
               <h2>Photorealistic cutaway and walkthrough</h2>
-              <p>The same compiled architecture JSON drives the live cutaway, collision-aware first-person viewport, Blender HD/4K render and MP4 camera path.</p>
+              <p>The same compiled architecture JSON drives the live cutaway, interactive first-person doors, Blender HD/4K render and MP4 camera path.</p>
             </div>
             <div className="render-controls">
               <select value={renderEngine} onChange={(e) => setRenderEngine(e.target.value as typeof renderEngine)}>
