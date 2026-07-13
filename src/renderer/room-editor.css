@@ -1,0 +1,33 @@
+.full-width { width: 100%; }
+.manual-note { display: block; margin-top: 8px; color: #6f8c7a; text-align: center; font-size: 10px; line-height: 1.4; }
+.editor-canvas { height: auto; min-height: 620px; }
+.room-layout-editor { min-height: 620px; height: 100%; display: grid; grid-template-rows: auto minmax(0, 1fr) auto; background: #07130e; }
+.room-editor-toolbar { display: flex; justify-content: space-between; align-items: center; gap: 14px; padding: 12px 16px; border-bottom: 1px solid #244433; background: #0a1d14; }
+.room-editor-toolbar > div:first-child { display: grid; gap: 3px; }
+.room-editor-toolbar strong { font-size: 13px; }
+.room-editor-toolbar span { color: #789381; font-size: 11px; }
+.room-editor-actions { display: flex; gap: 7px; }
+.room-editor-actions button { border: 1px solid #46775b; background: #163d29; color: #dff5e7; border-radius: 8px; padding: 8px 10px; display: inline-flex; align-items: center; gap: 6px; font-size: 11px; }
+.room-editor-actions .danger-icon { border-color: #7d4144; background: #35191c; color: #ffc2c5; }
+.room-editor-stage { position: relative; width: 100%; max-height: 610px; margin: auto; overflow: hidden; background: #020704; }
+.room-editor-stage svg { display: block; width: 100%; height: 100%; min-height: 430px; touch-action: none; user-select: none; }
+.editable-room { fill: rgba(42, 146, 87, .22); stroke: #78d69d; stroke-width: 2; vector-effect: non-scaling-stroke; cursor: move; transition: fill .12s; }
+.editable-room:hover { fill: rgba(66, 177, 108, .30); }
+.editable-room.selected { fill: rgba(240, 171, 72, .24); stroke: #ffbf69; stroke-width: 3; }
+.room-label { fill: #f4fff8; font-size: .36px; font-weight: 800; text-anchor: middle; dominant-baseline: middle; paint-order: stroke; stroke: rgba(4, 12, 8, .9); stroke-width: .08px; pointer-events: none; }
+.selection-box polygon { stroke: #ffbf69; stroke-width: 2; stroke-dasharray: 7 5; }
+.selection-box circle { fill: #fff4dc; stroke: #c87920; stroke-width: 2; cursor: nwse-resize; }
+.selection-box circle:nth-of-type(2), .selection-box circle:nth-of-type(4) { cursor: nesw-resize; }
+.empty-room-layout { position: absolute; inset: 0; display: grid; place-content: center; justify-items: center; gap: 7px; pointer-events: none; color: #dcebe1; text-align: center; background: rgba(3, 10, 6, .35); }
+.empty-room-layout span { color: #89a696; font-size: 12px; }
+.room-editor-footer { min-height: 68px; display: flex; justify-content: space-between; align-items: center; gap: 14px; padding: 10px 16px; border-top: 1px solid #244433; background: #0a1d14; color: #789381; font-size: 11px; }
+.editor-help { display: flex; align-items: center; gap: 7px; }
+.selected-room-fields { display: flex; align-items: flex-end; gap: 10px; }
+.selected-room-fields label { min-width: 180px; }
+.selected-room-fields input { padding: 7px 9px; }
+.selected-room-fields > span { min-width: 84px; padding: 8px 9px; border: 1px solid #294a39; border-radius: 8px; background: #081811; color: #a8c2b0; text-align: center; }
+@media (max-width: 1260px) {
+  .editor-canvas, .room-layout-editor { min-height: 560px; }
+  .room-editor-toolbar, .room-editor-footer { align-items: stretch; flex-direction: column; }
+  .room-editor-actions, .selected-room-fields { flex-wrap: wrap; }
+}
