@@ -43,7 +43,11 @@ try {
         --collect-all pypdfium2 `
         --collect-all cv2 `
         --collect-all trimesh `
+        --collect-all pytesseract `
+        --add-data "app\prompts;app\prompts" `
         --hidden-import app.main `
+        --hidden-import app.architecture_api `
+        --hidden-import app.services.architecture `
         --hidden-import app.services.drawings `
         --hidden-import uvicorn.logging `
         --hidden-import uvicorn.loops.auto `

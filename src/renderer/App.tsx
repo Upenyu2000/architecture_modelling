@@ -7,9 +7,11 @@ import { UploadPanel } from './components/UploadPanel';
 import { ScenePreview } from './components/ScenePreview';
 import { SettingsPanel } from './components/SettingsPanel';
 import { ModelDrawingPanel } from './components/ModelDrawingPanel';
+import { ArchitecturePanel } from './components/ArchitecturePanel';
 import { absoluteUrl, api, initApi } from './lib/api';
 import type {
-  AssetCategory, Job, ModelUnits, PlanType, Project, SaveSlot, UpAxis, WallDetectionMode,
+  AssetCategory, Job, MaterialUpdate, ModelUnits, PlanType, Project, SaveSlot, UpAxis,
+  WallDetectionMode,
 } from './types';
 
 type Point = [number, number];
@@ -97,8 +99,28 @@ function App() {
     setNotice('3D building model uploaded. Set the units and cut height, then generate drawings.');
   });
 
+  const compileArchitecture = async (useVisionAi: boolean) => {
+    await run(async () => {
+      const scene = await api.compileArchitecture(
+        project!.id,
+        planWidth,
+        wallHeight,
+        wallDetection,
+        minimumWallLength,
+        planType,
+        useVisionAi,
+      );
+      setProject((current) => current ? { ...current, scene, status: 'architecture_compiled' } : current);
+      setNotice(
+        useVisionAi
+          ? 'Architectural scene compiled. The configured vision service was used only if private remote processing was enabled.'
+          : 'Architectural scene compiled with walls, openings, fixtures, materials, collision data and walkthrough coordinates.',
+      );
+    });
+  };
+
   const analyze = () => run(async () => {
-    const scene = await api.analyze(
+    const detected = await api.analyze(
       project!.id,
       planWidth,
       wallHeight,
@@ -106,10 +128,28 @@ function App() {
       minimumWallLength,
       planType,
     );
-    setProject((current) => current ? { ...current, scene, status: 'analyzed' } : current);
-    setPlanType(scene.plan_type);
-    setNotice('Analysis complete. Use Edit Rooms to correct, move, resize, add or remove rooms.');
+    setProject((current) => current ? { ...current, scene: detected, status: 'analyzed' } : current);
+    setPlanType(detected.plan_type);
+    const scene = await api.compileArchitecture(
+      project!.id,
+      planWidth,
+      wallHeight,
+      wallDetection,
+      minimumWallLength,
+      detected.plan_type,
+      false,
+    );
+    setProject((current) => current ? { ...current, scene, status: 'architecture_compiled' } : current);
+    setNotice('Analysis and production compilation complete. Verify the cutaway, first-person view, data and room editor.');
   });
+
+  const applyMaterials = async (settings: MaterialUpdate) => {
+    await run(async () => {
+      const scene = await api.updateMaterials(project!.id, settings);
+      setProject((current) => current ? { ...current, scene, status: 'materials_updated' } : current);
+      setNotice(`Applied “${settings.palette_name}” to the synchronized 3D scene.`);
+    });
+  };
 
   const startManualLayout = async () => {
     if (project?.scene?.rooms.length) {
@@ -121,7 +161,7 @@ function App() {
     await run(async () => {
       const scene = await api.startManualLayout(project!.id, planWidth, wallHeight, true);
       setProject((current) => current ? { ...current, scene, status: 'manual_layout' } : current);
-      setNotice('Manual room layout started. Open Edit Rooms, add rooms, then drag and resize them over the plan.');
+      setNotice('Manual room layout started. Open Edit Rooms, add rooms, then drag and resize them over the plan. Compile the production scene when finished.');
     });
   };
 
@@ -254,8 +294,8 @@ function App() {
       <header className="topbar">
         <div className="brand-mark"><Box size={24} /></div>
         <div className="brand-copy">
-          <span>Architecture Modelling</span>
-          <strong>Dream Home Visualizer</strong>
+          <span>Arch-AI Convert</span>
+          <strong>Production Architectural Visualizer</strong>
         </div>
         <div className="topbar-meta">
           <span className="local-badge">Local-first Windows app</span>
@@ -275,7 +315,7 @@ function App() {
               <div><span className="eyebrow">Save manager</span><h2>Build save slots</h2></div>
               <Save size={22} />
             </div>
-            <p className="panel-copy">Keep named copies of the complete build, including uploads, geometry, drawings and generated outputs.</p>
+            <p className="panel-copy">Keep named copies of the complete build, including uploads, geometry, materials, drawings and generated outputs.</p>
             <div className="save-row">
               <input
                 value={slotName}
@@ -323,14 +363,14 @@ function App() {
 
           <section className="panel analysis-panel">
             <div className="panel-heading"><div><span className="eyebrow">2. Geometry</span><h2>Automatic or manual layout</h2></div><ScanLine size={22} /></div>
-            <p className="panel-copy">Rendered-plan mode ignores the black background and most furniture edges. Manual mode lets you trace any room shape and size.</p>
+            <p className="panel-copy">Blueprint and rendered plans use separate processing paths. Manual mode lets you trace any room shape and size over the source.</p>
             <div className="two-inputs">
               <label>Plan width (metres)<input type="number" min="2" step="0.1" value={planWidth} onChange={(e) => setPlanWidth(Number(e.target.value))} /></label>
               <label>Wall height (metres)<input type="number" min="2" max="8" step="0.1" value={wallHeight} onChange={(e) => setWallHeight(Number(e.target.value))} /></label>
               <label>Plan type
                 <select value={planType} onChange={(event) => setPlanType(event.target.value as PlanType)}>
                   <option value="auto">Auto detect</option>
-                  <option value="blueprint">Blueprint / line drawing</option>
+                  <option value="blueprint">Blueprint / CAD line drawing</option>
                   <option value="rendered">Rendered / furnished plan</option>
                 </select>
               </label>
@@ -345,10 +385,17 @@ function App() {
                 <div className="unit-input"><input type="number" min="0.3" max="10" step="0.1" value={minimumWallLength} onChange={(event) => setMinimumWallLength(Number(event.target.value))} /><span>m</span></div>
               </label>
             </div>
-            <button className="primary" disabled={busy || !project?.floorplan} onClick={analyze}><Sparkles size={18} /> Analyze and build 3D scene</button>
+            <button className="primary" disabled={busy || !project?.floorplan} onClick={analyze}><Sparkles size={18} /> Analyze, classify and compile</button>
             <button className="secondary full-width" disabled={busy || !project?.floorplan} onClick={() => void startManualLayout()}><Edit3 size={18} /> Start blank manual room layout</button>
             <span className="manual-note">Manual rooms can be added, removed, dragged and resized in the Edit Rooms view.</span>
           </section>
+
+          <ArchitecturePanel
+            project={project}
+            busy={busy}
+            onCompile={compileArchitecture}
+            onApply={applyMaterials}
+          />
 
           <ModelDrawingPanel
             project={project}
@@ -370,9 +417,9 @@ function App() {
           />
           <section className="output-panel">
             <div className="output-copy">
-              <span className="eyebrow">4. Output</span>
-              <h2>Render and walkthrough</h2>
-              <p>Still renders now use a correctly aligned top-down orthographic camera. Blender produces HD/4K images and MP4 walkthroughs when installed.</p>
+              <span className="eyebrow">5. Output</span>
+              <h2>Photorealistic cutaway and walkthrough</h2>
+              <p>The same compiled architecture JSON drives the live cutaway, collision-aware first-person viewport, Blender HD/4K render and MP4 camera path.</p>
             </div>
             <div className="render-controls">
               <select value={renderEngine} onChange={(e) => setRenderEngine(e.target.value as typeof renderEngine)}>

@@ -43,6 +43,8 @@ class WallSegment(BaseModel):
     end: tuple[float, float]
     height: float
     thickness: float = 0.16
+    wall_type: Literal["exterior", "interior", "partition"] = "interior"
+    confidence: float = Field(default=0.75, ge=0.0, le=1.0)
 
 
 class RoomShape(BaseModel):
@@ -51,6 +53,23 @@ class RoomShape(BaseModel):
     polygon: list[tuple[float, float]]
     area_m2: float
     centroid: tuple[float, float]
+    room_type: str = "room"
+    width_m: float | None = None
+    depth_m: float | None = None
+    extracted_dimension: str | None = None
+    label_confidence: float = Field(default=0.0, ge=0.0, le=1.0)
+
+
+class Opening(BaseModel):
+    id: str
+    opening_type: Literal["door", "window", "sliding_door", "bifold_door", "open_passage"]
+    position: tuple[float, float]
+    width: float
+    height: float = 2.1
+    rotation_deg: float = 0.0
+    wall_id: str | None = None
+    swing_direction: Literal["clockwise", "counterclockwise", "none"] = "none"
+    confidence: float = Field(default=0.6, ge=0.0, le=1.0)
 
 
 class SceneAsset(BaseModel):
@@ -66,6 +85,66 @@ class SceneAsset(BaseModel):
     source_path: str | None = None
     mesh_url: str | None = None
     mesh_path: str | None = None
+    source: str = "user_upload"
+    confidence: float = Field(default=1.0, ge=0.0, le=1.0)
+
+
+class ArchitecturalObject(BaseModel):
+    id: str
+    object_type: str
+    asset_id: str
+    category: Literal["furniture", "fixture", "utility", "structure"]
+    room_id: str | None = None
+    coordinates: tuple[float, float, float]
+    rotation_deg: float = 0.0
+    scale: tuple[float, float, float] = (1.0, 1.0, 1.0)
+    size: tuple[float, float, float] = (1.0, 1.0, 1.0)
+    source: Literal["vision", "symbol_heuristic", "room_inference", "user"] = "room_inference"
+    confidence: float = Field(default=0.45, ge=0.0, le=1.0)
+
+
+class MaterialSpec(BaseModel):
+    name: str
+    material_type: str
+    hex_color: str
+    roughness: float = Field(default=0.6, ge=0.0, le=1.0)
+    metallic: float = Field(default=0.0, ge=0.0, le=1.0)
+    specular: float = Field(default=0.5, ge=0.0, le=1.0)
+    texture_url: str | None = None
+    normal_url: str | None = None
+    displacement_url: str | None = None
+    texture_scale: float = Field(default=1.0, gt=0.0, le=100.0)
+
+
+class SceneMaterials(BaseModel):
+    palette_name: str = "Light Oak / Modern Tech"
+    floor_global: MaterialSpec = Field(default_factory=lambda: MaterialSpec(
+        name="Light Oak", material_type="hardwood", hex_color="#B99268", roughness=0.46, metallic=0.0, specular=0.32,
+    ))
+    walls_global: MaterialSpec = Field(default_factory=lambda: MaterialSpec(
+        name="Warm White", material_type="paint", hex_color="#E8E5DE", roughness=0.82, metallic=0.0, specular=0.2,
+    ))
+    exterior_walls: MaterialSpec = Field(default_factory=lambda: MaterialSpec(
+        name="Soft Grey Masonry", material_type="masonry", hex_color="#9C9C96", roughness=0.88, metallic=0.0, specular=0.15,
+    ))
+    accent: MaterialSpec = Field(default_factory=lambda: MaterialSpec(
+        name="Technology Blue", material_type="accent", hex_color="#2E79C6", roughness=0.5, metallic=0.05, specular=0.45,
+    ))
+    fixture_metal: MaterialSpec = Field(default_factory=lambda: MaterialSpec(
+        name="Brushed Steel", material_type="metal", hex_color="#A6ADB2", roughness=0.28, metallic=0.82, specular=0.75,
+    ))
+
+
+class ProjectMetadata(BaseModel):
+    scale_ratio: str = "unverified"
+    detected_rooms: int = 0
+    detected_openings: int = 0
+    detected_objects: int = 0
+    parser_version: str = "arch-ai-1.0"
+    source_plan_type: str = "unknown"
+    structural_confidence: float = Field(default=0.0, ge=0.0, le=1.0)
+    ocr_status: str = "not_configured"
+    extracted_labels: list[str] = Field(default_factory=list)
 
 
 class SceneManifest(BaseModel):
@@ -77,6 +156,14 @@ class SceneManifest(BaseModel):
     rooms: list[RoomShape]
     assets: list[SceneAsset]
     camera_path: list[tuple[float, float, float]]
+    openings: list[Opening] = Field(default_factory=list)
+    fixtures_and_furniture: list[ArchitecturalObject] = Field(default_factory=list)
+    materials: SceneMaterials = Field(default_factory=SceneMaterials)
+    project_metadata: ProjectMetadata = Field(default_factory=ProjectMetadata)
+    first_person_start: tuple[float, float, float] | None = None
+    collision_segments: list[tuple[tuple[float, float], tuple[float, float]]] = Field(default_factory=list)
+    ceiling_height_m: float = 2.8
+    cutaway_height_m: float = 1.65
     floor_texture_url: str | None = None
     floor_texture_path: str | None = None
     wall_texture_url: str | None = None
@@ -84,6 +171,7 @@ class SceneManifest(BaseModel):
     reference_image_url: str | None = None
     reference_image_path: str | None = None
     detection_preview_url: str | None = None
+    architecture_json_url: str | None = None
     wall_detection_mode: str = "clean"
     plan_type: Literal["auto", "blueprint", "rendered"] = "auto"
     layout_mode: Literal["automatic", "manual"] = "automatic"
@@ -152,6 +240,9 @@ class AnalyzeRequest(BaseModel):
     wall_detection: Literal["clean", "balanced", "detailed"] = "clean"
     minimum_wall_length_m: float = Field(default=0.9, ge=0.3, le=10.0)
     plan_type: Literal["auto", "blueprint", "rendered"] = "auto"
+    detect_openings: bool = True
+    auto_furnish: bool = True
+    use_vision_ai: bool = False
 
 
 class ManualLayoutRequest(BaseModel):
@@ -182,6 +273,17 @@ class DrawingRequest(BaseModel):
 
 class RoomUpdateRequest(BaseModel):
     name: str = Field(min_length=1, max_length=80)
+
+
+class MaterialUpdateRequest(BaseModel):
+    palette_name: str = Field(default="Light Oak / Modern Tech", min_length=1, max_length=100)
+    floor_type: str = Field(default="hardwood", min_length=1, max_length=60)
+    floor_color: str = Field(default="#B99268", pattern=r"^#[0-9A-Fa-f]{6}$")
+    wall_color: str = Field(default="#E8E5DE", pattern=r"^#[0-9A-Fa-f]{6}$")
+    exterior_color: str = Field(default="#9C9C96", pattern=r"^#[0-9A-Fa-f]{6}$")
+    accent_color: str = Field(default="#2E79C6", pattern=r"^#[0-9A-Fa-f]{6}$")
+    roughness: float = Field(default=0.55, ge=0.0, le=1.0)
+    cutaway_height_m: float = Field(default=1.65, ge=0.6, le=3.5)
 
 
 class RenderRequest(BaseModel):
