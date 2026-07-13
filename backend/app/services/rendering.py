@@ -16,6 +16,14 @@ QUALITY = {
     "4k": (3840, 2160),
 }
 
+WINDOW_TYPES = {
+    "window", "fixed_window", "casement_window", "double_casement_window", "glider_window",
+    "garden_window", "bay_window", "bow_window", "double_hung_window",
+    "vertical_sliding_window", "horizontal_sliding_window",
+}
+DOUBLE_DOOR_TYPES = {"double_door", "double_bifold_door", "double_pocket_door", "double_sliding_door", "bypass_door"}
+SLIDING_TYPES = {"pocket_door", "double_pocket_door", "bypass_door", "sliding_door", "double_sliding_door", "sliding_glass_door"}
+
 
 def _rgb(value: str, fallback: tuple[int, int, int]) -> tuple[int, int, int]:
     raw = str(value or "").lstrip("#")
@@ -45,6 +53,69 @@ def _rotated_rectangle(
         points.append((cx + x * cosine - y * sine, cy + x * sine + y * cosine))
     draw.polygon(points, fill=fill)
     draw.line(points + [points[0]], fill=outline, width=width, joint="curve")
+
+
+def _draw_opening_symbol(draw: ImageDraw.ImageDraw, opening, offset_x: int, offset_y: int, scale: float, accent_color, line_width: int) -> None:
+    x = offset_x + opening.position[0] * scale
+    z = offset_y + opening.position[1] * scale
+    span = opening.width * scale
+    angle = math.radians(opening.rotation_deg)
+    ux, uz = math.cos(angle), math.sin(angle)
+    nx, nz = -uz, ux
+    dx, dz = ux * span / 2, uz * span / 2
+    opening_type = str(opening.opening_type)
+
+    if opening_type in WINDOW_TYPES:
+        colour = (102, 190, 235, 255)
+        draw.line((x - dx, z - dz, x + dx, z + dz), fill=colour, width=line_width)
+        inset = max(2, line_width * 2)
+        draw.line((x - dx + nx * inset, z - dz + nz * inset, x + dx + nx * inset, z + dz + nz * inset), fill=colour, width=max(1, line_width // 2))
+        if opening_type in {"bay_window", "bow_window", "garden_window"}:
+            bow = span * 0.18
+            draw.line((x - dx, z - dz, x - dx * 0.55 + nx * bow, z - dz * 0.55 + nz * bow, x + dx * 0.55 + nx * bow, z + dz * 0.55 + nz * bow, x + dx, z + dz), fill=colour, width=max(1, line_width // 2), joint="curve")
+        return
+
+    if opening_type == "open_passage":
+        draw.line((x - dx, z - dz, x + dx, z + dz), fill=(215, 168, 97, 255), width=max(2, line_width // 2))
+        return
+
+    colour = (*accent_color, 255)
+    if opening_type == "revolving_door":
+        radius = span / 2
+        draw.ellipse((x - radius, z - radius, x + radius, z + radius), outline=colour, width=line_width)
+        draw.line((x - radius * 0.7, z - radius * 0.7, x + radius * 0.7, z + radius * 0.7), fill=colour, width=max(1, line_width // 2))
+        draw.line((x - radius * 0.7, z + radius * 0.7, x + radius * 0.7, z - radius * 0.7), fill=colour, width=max(1, line_width // 2))
+        return
+
+    if opening_type in SLIDING_TYPES:
+        draw.line((x - dx, z - dz, x + dx, z + dz), fill=colour, width=line_width)
+        shift = span * 0.18
+        draw.line((x - dx + ux * shift + nx * line_width * 2, z - dz + uz * shift + nz * line_width * 2, x + dx + ux * shift + nx * line_width * 2, z + dz + uz * shift + nz * line_width * 2), fill=colour, width=max(1, line_width // 2))
+        return
+
+    if opening_type == "overhead_door":
+        draw.line((x - dx, z - dz, x + dx, z + dz), fill=colour, width=line_width)
+        draw.arc((x - span / 2, z - span / 2, x + span / 2, z + span / 2), 180, 360, fill=colour, width=max(1, line_width // 2))
+        return
+
+    double = opening_type in DOUBLE_DOOR_TYPES
+    swing = -1 if opening.swing_direction == "counterclockwise" else 1
+    radius = span / 2 if double else span
+    if double:
+        draw.line((x - dx, z - dz, x, z), fill=colour, width=line_width)
+        draw.line((x, z, x + dx, z + dz), fill=colour, width=line_width)
+        for sign in (-1, 1):
+            hinge_x, hinge_z = x + ux * radius * sign, z + uz * radius * sign
+            end_x = hinge_x - ux * radius * sign + nx * radius * 0.82 * swing
+            end_z = hinge_z - uz * radius * sign + nz * radius * 0.82 * swing
+            draw.line((hinge_x, hinge_z, end_x, end_z), fill=colour, width=max(1, line_width // 2))
+    else:
+        hinge_sign = 1 if opening.hinge_side == "right" else -1
+        hinge_x, hinge_z = x + ux * span / 2 * hinge_sign, z + uz * span / 2 * hinge_sign
+        end_x = hinge_x - ux * span * hinge_sign + nx * span * 0.78 * swing
+        end_z = hinge_z - uz * span * hinge_sign + nz * span * 0.78 * swing
+        draw.line((x - dx, z - dz, x + dx, z + dz), fill=colour, width=line_width)
+        draw.line((hinge_x, hinge_z, end_x, end_z), fill=colour, width=max(1, line_width // 2))
 
 
 def technical_render(scene: SceneManifest, output: Path, quality: str, progress: Callable[[int, str], None]) -> Path:
@@ -113,15 +184,9 @@ def technical_render(scene: SceneManifest, output: Path, quality: str, progress:
             width=thickness,
         )
 
+    symbol_width = max(3, width // 700)
     for opening in scene.openings:
-        x = offset_x + opening.position[0] * scale
-        z = offset_y + opening.position[1] * scale
-        span = opening.width * scale
-        angle = math.radians(opening.rotation_deg)
-        dx = math.cos(angle) * span / 2
-        dz = math.sin(angle) * span / 2
-        colour = (102, 190, 235) if opening.opening_type == "window" else accent_color
-        draw.line((x - dx, z - dz, x + dx, z + dz), fill=(*colour, 255), width=max(3, width // 700))
+        _draw_opening_symbol(draw, opening, offset_x, offset_y, scale, accent_color, symbol_width)
 
     progress(66, "Placing fixtures, furniture and user assets")
     for item in scene.fixtures_and_furniture:
