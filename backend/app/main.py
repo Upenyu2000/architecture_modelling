@@ -26,7 +26,8 @@ from .services.providers import reconstruct_image_to_3d
 from .services.rendering import blender_render, technical_render
 from .services.scene import apply_assets
 
-app = FastAPI(title=f"{APP_NAME} Local API", version="1.2.0")
+APP_VERSION = "1.4.0"
+app = FastAPI(title=f"{APP_NAME} Local API", version=APP_VERSION)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://127.0.0.1:5173", "http://localhost:5173", "null"],
@@ -55,7 +56,7 @@ def persist_scene(project: Project, scene: SceneManifest, status: str = "layout_
 
 @app.get("/health")
 def health() -> dict[str, Any]:
-    return {"status": "ok", "service": APP_NAME, "version": "1.2.0"}
+    return {"status": "ok", "service": APP_NAME, "version": APP_VERSION}
 
 
 @app.get("/api/v1/projects", response_model=list[Project])
