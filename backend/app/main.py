@@ -10,16 +10,20 @@ from fastapi.responses import FileResponse
 from .config import APP_NAME, PROJECTS_DIR, ensure_directories, load_settings, save_settings
 from .models import (
     AnalyzeRequest, AssetFile, CreateProjectRequest, FloorplanFile, Job, Project,
-    RenderRequest, RoomUpdateRequest, SceneManifest, WalkthroughRequest,
+    RenderRequest, RoomUpdateRequest, SaveSlotRequest, SaveSlotSummary,
+    SceneManifest, WalkthroughRequest,
 )
-from .storage import create_project, load_project, project_dir, save_project, save_upload, write_json
+from .storage import (
+    create_project, create_save_slot, delete_save_slot, list_save_slots, load_project,
+    project_dir, reset_project, restore_save_slot, save_project, save_upload, write_json,
+)
 from .services.floorplan import analyze_floorplan, rasterize_floorplan
 from .services.jobs import create_job, get_job, submit
 from .services.providers import reconstruct_image_to_3d
 from .services.rendering import blender_render, technical_render
 from .services.scene import apply_assets
 
-app = FastAPI(title=f"{APP_NAME} Local API", version="1.0.0")
+app = FastAPI(title=f"{APP_NAME} Local API", version="1.0.4")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://127.0.0.1:5173", "http://localhost:5173", "null"],
@@ -39,7 +43,7 @@ def project_or_404(project_id: str) -> Project:
 
 @app.get("/health")
 def health() -> dict[str, Any]:
-    return {"status": "ok", "service": APP_NAME, "version": "1.0.0"}
+    return {"status": "ok", "service": APP_NAME, "version": "1.0.4"}
 
 
 @app.get("/api/v1/projects", response_model=list[Project])
@@ -61,6 +65,43 @@ def new_project(request: CreateProjectRequest) -> Project:
 @app.get("/api/v1/projects/{project_id}", response_model=Project)
 def get_project(project_id: str) -> Project:
     return project_or_404(project_id)
+
+
+@app.post("/api/v1/projects/{project_id}/reset", response_model=Project)
+def clear_project(project_id: str) -> Project:
+    project_or_404(project_id)
+    return reset_project(project_id)
+
+
+@app.get("/api/v1/projects/{project_id}/save-slots", response_model=list[SaveSlotSummary])
+def get_save_slots(project_id: str) -> list[SaveSlotSummary]:
+    project_or_404(project_id)
+    return list_save_slots(project_id)
+
+
+@app.post("/api/v1/projects/{project_id}/save-slots", response_model=SaveSlotSummary)
+def save_to_slot(project_id: str, request: SaveSlotRequest) -> SaveSlotSummary:
+    project_or_404(project_id)
+    return create_save_slot(project_id, request.name)
+
+
+@app.post("/api/v1/projects/{project_id}/save-slots/{slot_id}/load", response_model=Project)
+def load_from_slot(project_id: str, slot_id: str) -> Project:
+    project_or_404(project_id)
+    try:
+        return restore_save_slot(project_id, slot_id)
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="Save slot not found")
+
+
+@app.delete("/api/v1/projects/{project_id}/save-slots/{slot_id}")
+def remove_save_slot(project_id: str, slot_id: str) -> dict[str, str]:
+    project_or_404(project_id)
+    try:
+        delete_save_slot(project_id, slot_id)
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="Save slot not found")
+    return {"deleted": slot_id}
 
 
 @app.post("/api/v1/projects/{project_id}/floorplan", response_model=Project)
