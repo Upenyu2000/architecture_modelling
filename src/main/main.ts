@@ -36,7 +36,7 @@ function resolveBackendCommand(): { command: string; args: string[]; cwd: string
   const python = process.env.DREAMHOME_PYTHON || (process.platform === 'win32' ? 'python' : 'python3');
   return {
     command: python,
-    args: ['-m', 'uvicorn', 'backend.app.main:app', '--host', BACKEND_HOST, '--port', String(BACKEND_PORT)],
+    args: ['-m', 'uvicorn', 'backend.app.asgi:app', '--host', BACKEND_HOST, '--port', String(BACKEND_PORT)],
     cwd: appRoot,
   };
 }
