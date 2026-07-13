@@ -6,8 +6,11 @@ import {
 import { UploadPanel } from './components/UploadPanel';
 import { ScenePreview } from './components/ScenePreview';
 import { SettingsPanel } from './components/SettingsPanel';
+import { ModelDrawingPanel } from './components/ModelDrawingPanel';
 import { absoluteUrl, api, initApi } from './lib/api';
-import type { AssetCategory, Job, Project, SaveSlot } from './types';
+import type {
+  AssetCategory, Job, ModelUnits, Project, SaveSlot, UpAxis, WallDetectionMode,
+} from './types';
 
 function savedAt(value: string): string {
   const date = new Date(value);
@@ -23,6 +26,8 @@ function App() {
   const [notice, setNotice] = useState('');
   const [planWidth, setPlanWidth] = useState(14);
   const [wallHeight, setWallHeight] = useState(2.8);
+  const [wallDetection, setWallDetection] = useState<WallDetectionMode>('clean');
+  const [minimumWallLength, setMinimumWallLength] = useState(0.9);
   const [renderEngine, setRenderEngine] = useState<'auto' | 'technical' | 'blender'>('auto');
   const [job, setJob] = useState<Job | null>(null);
   const pollTimer = useRef<number | null>(null);
@@ -46,6 +51,7 @@ function App() {
         if (selected.scene) {
           setPlanWidth(selected.scene.width_m);
           setWallHeight(selected.scene.wall_height_m);
+          setWallDetection(selected.scene.wall_detection_mode ?? 'clean');
         }
       } catch (e) {
         setError(e instanceof Error ? e.message : String(e));
@@ -81,8 +87,19 @@ function App() {
     setProject(await api.uploadAsset(project!.id, category, slot, file));
   });
 
+  const uploadBuildingModel = (file: File) => run(async () => {
+    setProject(await api.uploadBuildingModel(project!.id, file));
+    setNotice('3D building model uploaded. Set the units and cut height, then generate drawings.');
+  });
+
   const analyze = () => run(async () => {
-    const scene = await api.analyze(project!.id, planWidth, wallHeight);
+    const scene = await api.analyze(
+      project!.id,
+      planWidth,
+      wallHeight,
+      wallDetection,
+      minimumWallLength,
+    );
     setProject((current) => current ? { ...current, scene, status: 'analyzed' } : current);
   });
 
@@ -101,6 +118,7 @@ function App() {
     if (restored.scene) {
       setPlanWidth(restored.scene.width_m);
       setWallHeight(restored.scene.wall_height_m);
+      setWallDetection(restored.scene.wall_detection_mode ?? 'clean');
     }
     await refreshSaveSlots(restored.id);
     setNotice(`Loaded “${slot.name}”.`);
@@ -117,7 +135,7 @@ function App() {
 
   const resetProject = () => {
     const confirmed = window.confirm(
-      'Clear the active floor plan, all uploaded images, generated geometry and outputs? Saved slots will not be deleted.',
+      'Clear the active floor plan, 3D model, all uploaded images, generated geometry, drawings and outputs? Saved slots will not be deleted.',
     );
     if (!confirmed) return;
     void run(async () => {
@@ -126,6 +144,8 @@ function App() {
       setJob(null);
       setPlanWidth(14);
       setWallHeight(2.8);
+      setWallDetection('clean');
+      setMinimumWallLength(0.9);
       setNotice('Active project cleared. Your saved slots are still available.');
     });
   };
@@ -134,13 +154,27 @@ function App() {
     setJob(created);
     if (pollTimer.current) window.clearInterval(pollTimer.current);
     pollTimer.current = window.setInterval(async () => {
-      const latest = await api.getJob(created.id);
-      setJob(latest);
-      if (latest.status === 'completed' || latest.status === 'failed') {
+      try {
+        const latest = await api.getJob(created.id);
+        setJob(latest);
+        if (latest.status === 'completed' || latest.status === 'failed') {
+          if (pollTimer.current) window.clearInterval(pollTimer.current);
+          if (latest.status === 'completed' && latest.kind === 'drawing_set' && project) {
+            const refreshed = await api.getProject(project.id);
+            setProject(refreshed);
+            setNotice('2D drawing set generated and saved with this project.');
+          }
+        }
+      } catch (pollError) {
         if (pollTimer.current) window.clearInterval(pollTimer.current);
+        setError(pollError instanceof Error ? pollError.message : String(pollError));
       }
     }, 1000);
   };
+
+  const generateDrawings = (sliceHeight: number, upAxis: UpAxis, units: ModelUnits) => run(async () => {
+    watchJob(await api.createDrawings(project!.id, sliceHeight, upAxis, units));
+  });
 
   const render = (quality: 'preview' | '1080p' | '4k') => run(async () => {
     watchJob(await api.render(project!.id, quality, renderEngine));
@@ -156,7 +190,8 @@ function App() {
   });
 
   const hasBuild = Boolean(
-    project?.floorplan || project?.scene || Object.keys(project?.assets ?? {}).length,
+    project?.floorplan || project?.building_model || project?.scene || project?.drawing_set
+      || Object.keys(project?.assets ?? {}).length,
   );
 
   return (
@@ -185,7 +220,7 @@ function App() {
               <div><span className="eyebrow">Save manager</span><h2>Build save slots</h2></div>
               <Save size={22} />
             </div>
-            <p className="panel-copy">Keep named copies of the complete build, including uploads, geometry and generated outputs.</p>
+            <p className="panel-copy">Keep named copies of the complete build, including uploads, geometry, drawings and generated outputs.</p>
             <div className="save-row">
               <input
                 value={slotName}
@@ -210,7 +245,7 @@ function App() {
                     <strong>{slot.name}</strong>
                     <span><Clock3 size={12} /> {savedAt(slot.updated_at)}</span>
                     <small>
-                      {slot.floorplan_filename ?? 'No floor plan'} · {slot.asset_count} assets · {slot.has_scene ? '3D scene ready' : slot.status}
+                      {slot.floorplan_filename ?? slot.building_model_filename ?? 'No source file'} · {slot.asset_count} assets · {slot.has_drawings ? 'drawings ready' : slot.has_scene ? '3D scene ready' : slot.status}
                     </small>
                   </div>
                   <div className="slot-actions">
@@ -228,14 +263,25 @@ function App() {
             <button className="danger-button" disabled={busy || !hasBuild} onClick={resetProject}>
               <RotateCcw size={17} /> Reset active project
             </button>
-            <span className="reset-note">Reset clears active uploads only. Save slots remain available.</span>
+            <span className="reset-note">Reset clears active files only. Save slots remain available.</span>
           </section>
 
           <section className="panel analysis-panel">
-            <div className="panel-heading"><div><span className="eyebrow">2. Geometry</span><h2>Structural extraction</h2></div><ScanLine size={22} /></div>
+            <div className="panel-heading"><div><span className="eyebrow">2. Geometry</span><h2>Clean structural extraction</h2></div><ScanLine size={22} /></div>
+            <p className="panel-copy">Clean mode removes text, furniture symbols and duplicate edges before walls are extruded.</p>
             <div className="two-inputs">
               <label>Plan width (metres)<input type="number" min="2" step="0.1" value={planWidth} onChange={(e) => setPlanWidth(Number(e.target.value))} /></label>
               <label>Wall height (metres)<input type="number" min="2" max="8" step="0.1" value={wallHeight} onChange={(e) => setWallHeight(Number(e.target.value))} /></label>
+              <label>Wall detection
+                <select value={wallDetection} onChange={(event) => setWallDetection(event.target.value as WallDetectionMode)}>
+                  <option value="clean">Clean — fewer walls</option>
+                  <option value="balanced">Balanced</option>
+                  <option value="detailed">Detailed — preserve short walls</option>
+                </select>
+              </label>
+              <label>Minimum wall length
+                <div className="unit-input"><input type="number" min="0.3" max="10" step="0.1" value={minimumWallLength} onChange={(event) => setMinimumWallLength(Number(event.target.value))} /><span>m</span></div>
+              </label>
             </div>
             <button className="primary" disabled={busy || !project?.floorplan} onClick={analyze}><Sparkles size={18} /> Analyze and build 3D scene</button>
             {project?.scene?.rooms?.length ? (
@@ -257,6 +303,13 @@ function App() {
               </div>
             ) : null}
           </section>
+
+          <ModelDrawingPanel
+            project={project}
+            busy={busy}
+            onUpload={uploadBuildingModel}
+            onGenerate={generateDrawings}
+          />
           <SettingsPanel />
         </aside>
 
