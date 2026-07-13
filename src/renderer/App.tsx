@@ -1,15 +1,26 @@
 import { useEffect, useRef, useState } from 'react';
-import { Box, Film, Image as ImageIcon, Play, ScanLine, Sparkles } from 'lucide-react';
+import {
+  Box, Clock3, Film, FolderOpen, Image as ImageIcon, Play, RotateCcw,
+  Save, ScanLine, Sparkles, Trash2,
+} from 'lucide-react';
 import { UploadPanel } from './components/UploadPanel';
 import { ScenePreview } from './components/ScenePreview';
 import { SettingsPanel } from './components/SettingsPanel';
 import { absoluteUrl, api, initApi } from './lib/api';
-import type { AssetCategory, Job, Project } from './types';
+import type { AssetCategory, Job, Project, SaveSlot } from './types';
+
+function savedAt(value: string): string {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? value : date.toLocaleString();
+}
 
 function App() {
   const [project, setProject] = useState<Project | null>(null);
+  const [saveSlots, setSaveSlots] = useState<SaveSlot[]>([]);
+  const [slotName, setSlotName] = useState('');
   const [busy, setBusy] = useState(true);
   const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
   const [planWidth, setPlanWidth] = useState(14);
   const [wallHeight, setWallHeight] = useState(2.8);
   const [renderEngine, setRenderEngine] = useState<'auto' | 'technical' | 'blender'>('auto');
@@ -31,6 +42,11 @@ function App() {
         }
         localStorage.setItem('dreamhome.currentProject', selected.id);
         setProject(selected);
+        setSaveSlots(await api.listSaveSlots(selected.id));
+        if (selected.scene) {
+          setPlanWidth(selected.scene.width_m);
+          setWallHeight(selected.scene.wall_height_m);
+        }
       } catch (e) {
         setError(e instanceof Error ? e.message : String(e));
       } finally {
@@ -41,16 +57,78 @@ function App() {
   }, []);
 
   const run = async (task: () => Promise<void>) => {
-    setBusy(true); setError('');
-    try { await task(); } catch (e) { setError(e instanceof Error ? e.message : String(e)); } finally { setBusy(false); }
+    setBusy(true);
+    setError('');
+    setNotice('');
+    try {
+      await task();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
   };
 
-  const uploadFloorplan = (file: File) => run(async () => setProject(await api.uploadFloorplan(project!.id, file)));
-  const uploadAsset = (category: AssetCategory, slot: string, file: File) => run(async () => setProject(await api.uploadAsset(project!.id, category, slot, file)));
+  const refreshSaveSlots = async (projectId: string) => {
+    setSaveSlots(await api.listSaveSlots(projectId));
+  };
+
+  const uploadFloorplan = (file: File) => run(async () => {
+    setProject(await api.uploadFloorplan(project!.id, file));
+  });
+
+  const uploadAsset = (category: AssetCategory, slot: string, file: File) => run(async () => {
+    setProject(await api.uploadAsset(project!.id, category, slot, file));
+  });
+
   const analyze = () => run(async () => {
     const scene = await api.analyze(project!.id, planWidth, wallHeight);
     setProject((current) => current ? { ...current, scene, status: 'analyzed' } : current);
   });
+
+  const saveCurrentBuild = () => run(async () => {
+    const name = slotName.trim() || `Saved Build ${saveSlots.length + 1}`;
+    await api.createSaveSlot(project!.id, name);
+    await refreshSaveSlots(project!.id);
+    setSlotName('');
+    setNotice(`Saved “${name}” for later.`);
+  });
+
+  const loadSavedBuild = (slot: SaveSlot) => run(async () => {
+    const restored = await api.loadSaveSlot(project!.id, slot.id);
+    setProject(restored);
+    setJob(null);
+    if (restored.scene) {
+      setPlanWidth(restored.scene.width_m);
+      setWallHeight(restored.scene.wall_height_m);
+    }
+    await refreshSaveSlots(restored.id);
+    setNotice(`Loaded “${slot.name}”.`);
+  });
+
+  const removeSavedBuild = (slot: SaveSlot) => {
+    if (!window.confirm(`Delete the save slot “${slot.name}”? This cannot be undone.`)) return;
+    void run(async () => {
+      await api.deleteSaveSlot(project!.id, slot.id);
+      await refreshSaveSlots(project!.id);
+      setNotice(`Deleted “${slot.name}”.`);
+    });
+  };
+
+  const resetProject = () => {
+    const confirmed = window.confirm(
+      'Clear the active floor plan, all uploaded images, generated geometry and outputs? Saved slots will not be deleted.',
+    );
+    if (!confirmed) return;
+    void run(async () => {
+      const cleared = await api.resetProject(project!.id);
+      setProject(cleared);
+      setJob(null);
+      setPlanWidth(14);
+      setWallHeight(2.8);
+      setNotice('Active project cleared. Your saved slots are still available.');
+    });
+  };
 
   const watchJob = (created: Job) => {
     setJob(created);
@@ -64,8 +142,22 @@ function App() {
     }, 1000);
   };
 
-  const render = (quality: 'preview' | '1080p' | '4k') => run(async () => watchJob(await api.render(project!.id, quality, renderEngine)));
-  const walkthrough = () => run(async () => watchJob(await api.walkthrough(project!.id, 15, '1080p', renderEngine === 'technical' ? 'auto' : renderEngine)));
+  const render = (quality: 'preview' | '1080p' | '4k') => run(async () => {
+    watchJob(await api.render(project!.id, quality, renderEngine));
+  });
+
+  const walkthrough = () => run(async () => {
+    watchJob(await api.walkthrough(
+      project!.id,
+      15,
+      '1080p',
+      renderEngine === 'technical' ? 'auto' : renderEngine,
+    ));
+  });
+
+  const hasBuild = Boolean(
+    project?.floorplan || project?.scene || Object.keys(project?.assets ?? {}).length,
+  );
 
   return (
     <main className="app-shell">
@@ -77,15 +169,68 @@ function App() {
         </div>
         <div className="topbar-meta">
           <span className="local-badge">Local-first Windows app</span>
-          <span>{project?.id.slice(0, 8) ?? 'Starting…'}</span>
+          <span>{project?.name ?? 'Starting…'}</span>
         </div>
       </header>
 
       {error && <div className="error-banner">{error}</div>}
+      {notice && <div className="notice-banner">{notice}</div>}
 
       <div className="workspace">
         <aside className="left-column">
           <UploadPanel project={project} busy={busy} onFloorplan={uploadFloorplan} onAsset={uploadAsset} />
+
+          <section className="panel save-panel">
+            <div className="panel-heading">
+              <div><span className="eyebrow">Save manager</span><h2>Build save slots</h2></div>
+              <Save size={22} />
+            </div>
+            <p className="panel-copy">Keep named copies of the complete build, including uploads, geometry and generated outputs.</p>
+            <div className="save-row">
+              <input
+                value={slotName}
+                maxLength={80}
+                placeholder={`Saved Build ${saveSlots.length + 1}`}
+                onChange={(event) => setSlotName(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' && !busy && hasBuild) void saveCurrentBuild();
+                }}
+              />
+              <button className="secondary" disabled={busy || !hasBuild} onClick={saveCurrentBuild}>
+                <Save size={16} /> Save
+              </button>
+            </div>
+
+            <div className="slot-list">
+              {saveSlots.length === 0 ? (
+                <div className="empty-slots">No saved builds yet.</div>
+              ) : saveSlots.map((slot) => (
+                <article className="slot-card" key={slot.id}>
+                  <div className="slot-copy">
+                    <strong>{slot.name}</strong>
+                    <span><Clock3 size={12} /> {savedAt(slot.updated_at)}</span>
+                    <small>
+                      {slot.floorplan_filename ?? 'No floor plan'} · {slot.asset_count} assets · {slot.has_scene ? '3D scene ready' : slot.status}
+                    </small>
+                  </div>
+                  <div className="slot-actions">
+                    <button disabled={busy} title="Load saved build" onClick={() => loadSavedBuild(slot)}>
+                      <FolderOpen size={16} /> Load
+                    </button>
+                    <button className="danger-icon" disabled={busy} title="Delete save slot" onClick={() => removeSavedBuild(slot)}>
+                      <Trash2 size={16} />
+                    </button>
+                  </div>
+                </article>
+              ))}
+            </div>
+
+            <button className="danger-button" disabled={busy || !hasBuild} onClick={resetProject}>
+              <RotateCcw size={17} /> Reset active project
+            </button>
+            <span className="reset-note">Reset clears active uploads only. Save slots remain available.</span>
+          </section>
+
           <section className="panel analysis-panel">
             <div className="panel-heading"><div><span className="eyebrow">2. Geometry</span><h2>Structural extraction</h2></div><ScanLine size={22} /></div>
             <div className="two-inputs">
