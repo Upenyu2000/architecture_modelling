@@ -1,4 +1,4 @@
-import type { AssetCategory, Job, Project, SceneManifest } from '../types';
+import type { AssetCategory, Job, Project, SaveSlot, SceneManifest } from '../types';
 
 let cachedBaseUrl = 'http://127.0.0.1:8765';
 
@@ -29,6 +29,20 @@ export const api = {
       body: JSON.stringify({ name }),
     }),
   getProject: (id: string) => request<Project>(`/api/v1/projects/${id}`),
+  resetProject: (id: string) =>
+    request<Project>(`/api/v1/projects/${id}/reset`, { method: 'POST' }),
+  listSaveSlots: (id: string) =>
+    request<SaveSlot[]>(`/api/v1/projects/${id}/save-slots`),
+  createSaveSlot: (id: string, name: string) =>
+    request<SaveSlot>(`/api/v1/projects/${id}/save-slots`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name }),
+    }),
+  loadSaveSlot: (id: string, slotId: string) =>
+    request<Project>(`/api/v1/projects/${id}/save-slots/${slotId}/load`, { method: 'POST' }),
+  deleteSaveSlot: (id: string, slotId: string) =>
+    request<{ deleted: string }>(`/api/v1/projects/${id}/save-slots/${slotId}`, { method: 'DELETE' }),
   uploadFloorplan: async (id: string, file: File) => {
     const body = new FormData();
     body.append('file', file);
