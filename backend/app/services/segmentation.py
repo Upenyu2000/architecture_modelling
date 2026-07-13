@@ -113,13 +113,13 @@ def run_semantic_model(image: np.ndarray) -> SemanticPrediction | None:
         prepared,
         scalefactor=1.0 / 255.0,
         size=(input_size, input_size),
-        mean=(0.485, 0.456, 0.406),
+        mean=(0.0, 0.0, 0.0),
         swapRB=True,
         crop=False,
     )
-    blob[:, 0] /= 0.229
-    blob[:, 1] /= 0.224
-    blob[:, 2] /= 0.225
+    blob[:, 0] = (blob[:, 0] - 0.485) / 0.229
+    blob[:, 1] = (blob[:, 1] - 0.456) / 0.224
+    blob[:, 2] = (blob[:, 2] - 0.406) / 0.225
     net = _net(model_path)
     net.setInput(blob)
     output = net.forward()
