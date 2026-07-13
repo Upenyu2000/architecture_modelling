@@ -56,6 +56,7 @@ export interface DrawingFile {
   kind: string;
   format: string;
   filename: string;
+  path: string;
   url: string;
 }
 
