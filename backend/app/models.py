@@ -81,8 +81,12 @@ class SceneManifest(BaseModel):
     floor_texture_path: str | None = None
     wall_texture_url: str | None = None
     wall_texture_path: str | None = None
+    reference_image_url: str | None = None
+    reference_image_path: str | None = None
     detection_preview_url: str | None = None
     wall_detection_mode: str = "clean"
+    plan_type: Literal["auto", "blueprint", "rendered"] = "auto"
+    layout_mode: Literal["automatic", "manual"] = "automatic"
     warnings: list[str] = Field(default_factory=list)
 
 
@@ -147,6 +151,26 @@ class AnalyzeRequest(BaseModel):
     wall_thickness_m: float = Field(default=0.16, ge=0.05, le=1.0)
     wall_detection: Literal["clean", "balanced", "detailed"] = "clean"
     minimum_wall_length_m: float = Field(default=0.9, ge=0.3, le=10.0)
+    plan_type: Literal["auto", "blueprint", "rendered"] = "auto"
+
+
+class ManualLayoutRequest(BaseModel):
+    plan_width_m: float = Field(default=14.0, gt=1, le=500)
+    wall_height_m: float = Field(default=2.8, ge=2.0, le=8.0)
+    wall_thickness_m: float = Field(default=0.16, ge=0.05, le=1.0)
+    clear_existing: bool = True
+
+
+class RoomCreateRequest(BaseModel):
+    name: str = Field(default="New Room", min_length=1, max_length=80)
+    x: float = 1.0
+    z: float = 1.0
+    width: float = Field(default=3.0, ge=0.4, le=200.0)
+    depth: float = Field(default=3.0, ge=0.4, le=200.0)
+
+
+class RoomGeometryRequest(BaseModel):
+    polygon: list[tuple[float, float]] = Field(min_length=3, max_length=64)
 
 
 class DrawingRequest(BaseModel):

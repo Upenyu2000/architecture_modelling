@@ -106,6 +106,23 @@ def add_room_floor(room, mat):
     obj.data.materials.append(mat)
 
 
+def add_topdown_camera(scene_data):
+    width = float(scene_data["width_m"])
+    depth = float(scene_data["depth_m"])
+    centre_x = width / 2
+    centre_z = depth / 2
+    largest = max(width, depth, 4.0)
+    bpy.ops.object.camera_add(location=(centre_x, largest * 2.2, centre_z))
+    camera = bpy.context.active_object
+    camera.name = "TopDownCamera"
+    camera.data.type = "ORTHO"
+    camera.data.ortho_scale = largest * 1.12
+    camera.data.lens = 50
+    camera.rotation_euler = (-math.pi / 2, 0.0, 0.0)
+    bpy.context.scene.camera = camera
+    return camera
+
+
 def add_camera_path(points, seconds: int):
     curve_data = bpy.data.curves.new("WalkthroughPath", type="CURVE")
     curve_data.dimensions = "3D"
@@ -164,9 +181,15 @@ def main() -> None:
     light.data.shape = "DISK"
     light.data.size = max(scene_data["width_m"], scene_data["depth_m"])
 
-    camera_points = scene_data.get("camera_path") or [(2, 1.6, 2), (scene_data["width_m"] - 2, 1.6, scene_data["depth_m"] - 2)]
-    camera = add_camera_path(camera_points, args.seconds)
-    camera.data.lens = 28
+    if args.mode == "video":
+        camera_points = scene_data.get("camera_path") or [
+            (2, 1.6, 2),
+            (scene_data["width_m"] - 2, 1.6, scene_data["depth_m"] - 2),
+        ]
+        camera = add_camera_path(camera_points, args.seconds)
+        camera.data.lens = 28
+    else:
+        add_topdown_camera(scene_data)
 
     scene = bpy.context.scene
     scene.render.engine = "BLENDER_EEVEE_NEXT"
@@ -187,7 +210,6 @@ def main() -> None:
         scene.frame_end = args.seconds * 30
         bpy.ops.render.render(animation=True)
     else:
-        scene.frame_set(max(1, args.seconds * 15))
         bpy.ops.render.render(write_still=True)
 
 

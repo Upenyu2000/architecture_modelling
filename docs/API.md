@@ -12,13 +12,17 @@ Base URL: `http://127.0.0.1:8765`
 | GET/POST | `/api/v1/projects/{id}/save-slots` | List or create complete local build snapshots |
 | POST | `/api/v1/projects/{id}/save-slots/{slot_id}/load` | Restore a saved build |
 | DELETE | `/api/v1/projects/{id}/save-slots/{slot_id}` | Delete a saved build |
-| POST | `/api/v1/projects/{id}/floorplan` | Upload PNG/JPG/PDF floor plan |
+| POST | `/api/v1/projects/{id}/floorplan` | Upload PNG/JPG/PDF floor plan and crop uniform borders |
 | POST | `/api/v1/projects/{id}/building-model` | Upload GLB/OBJ/STL/PLY building model |
 | POST | `/api/v1/projects/{id}/drawings` | Queue floor-plan and elevation drawing generation |
 | POST | `/api/v1/projects/{id}/assets/{category}/{slot}` | Upload a material or furniture reference |
-| POST | `/api/v1/projects/{id}/analyze` | Extract structural wall centre lines/rooms and assemble scene manifest |
-| PATCH | `/api/v1/projects/{id}/rooms/{room_id}` | Correct a room label |
-| POST | `/api/v1/projects/{id}/render` | Queue preview/1080p/4K image render |
+| POST | `/api/v1/projects/{id}/analyze` | Extract structural walls and rooms using blueprint or rendered-plan mode |
+| POST | `/api/v1/projects/{id}/manual-layout` | Start a blank editable room layout over the uploaded plan |
+| POST | `/api/v1/projects/{id}/rooms` | Add a rectangular room to the active layout |
+| PATCH | `/api/v1/projects/{id}/rooms/{room_id}` | Rename a room |
+| PATCH | `/api/v1/projects/{id}/rooms/{room_id}/geometry` | Move, resize or reshape a room polygon |
+| DELETE | `/api/v1/projects/{id}/rooms/{room_id}` | Remove a room and rebuild shared walls |
+| POST | `/api/v1/projects/{id}/render` | Queue preview/1080p/4K aligned image render |
 | POST | `/api/v1/projects/{id}/walkthrough` | Queue deterministic MP4 walkthrough |
 | GET | `/api/v1/jobs/{job_id}` | Poll a render or drawing job |
 | GET/PUT | `/api/v1/settings` | Local model and Blender settings |
@@ -31,11 +35,57 @@ Base URL: `http://127.0.0.1:8765`
   "wall_height_m": 2.8,
   "wall_thickness_m": 0.16,
   "wall_detection": "clean",
-  "minimum_wall_length_m": 0.9
+  "minimum_wall_length_m": 0.9,
+  "plan_type": "rendered"
 }
 ```
 
-`wall_detection` accepts `clean`, `balanced` or `detailed`. Clean mode uses stronger length and thickness filtering. The returned scene includes `detection_preview_url`, which displays the exact structural centre lines used for wall extrusion.
+`plan_type` accepts `auto`, `blueprint` or `rendered`. Rendered mode is intended for furnished top-down images and suppresses coloured furniture, texture and black-background edges. `wall_detection` accepts `clean`, `balanced` or `detailed`. Clean mode uses stronger length and thickness filtering.
+
+The returned scene contains:
+
+- `reference_image_url`: cropped plan aligned to scene coordinates
+- `detection_preview_url`: automatic structural overlay
+- `layout_mode`: `automatic` or `manual`
+- room polygons and a deduplicated wall graph
+
+## Manual room layout
+
+Start a blank manual layout:
+
+```json
+POST /api/v1/projects/{id}/manual-layout
+{
+  "plan_width_m": 14.0,
+  "wall_height_m": 2.8,
+  "wall_thickness_m": 0.16,
+  "clear_existing": true
+}
+```
+
+Add a room:
+
+```json
+POST /api/v1/projects/{id}/rooms
+{
+  "name": "Bedroom 1",
+  "x": 1.2,
+  "z": 0.8,
+  "width": 3.6,
+  "depth": 4.1
+}
+```
+
+Move, resize or reshape it by sending its complete polygon:
+
+```json
+PATCH /api/v1/projects/{id}/rooms/{room_id}/geometry
+{
+  "polygon": [[1.2, 0.8], [4.8, 0.8], [4.8, 4.9], [1.2, 4.9]]
+}
+```
+
+After every room edit, the service recalculates the area and centroid and rebuilds the wall network. Overlapping shared room boundaries become one wall rather than duplicate parallel walls.
 
 ## 3D-to-2D drawing request
 
@@ -61,8 +111,9 @@ The drawing job produces a ZIP package containing:
 
 ```text
 floorplan upload
-  -> cleaned structural centre-line and room graph
-  -> user verifies structure overlay
+  -> crop empty background and calibrate scene coordinates
+  -> automatic analysis or user-authored room graph
+  -> immutable deduplicated wall graph
   -> Blender depth, normal, semantic-ID and edge passes
   -> ControlNet depth/line conditioning
 
@@ -78,7 +129,7 @@ material swatch
   -> bind only to allowed surface IDs
 
 render request
-  -> base physically rendered frame
+  -> aligned top-down or perspective base render
   -> diffusion refinement with structural controls
   -> segmentation/depth audit
   -> upscaler

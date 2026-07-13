@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import {
-  Box, Clock3, Film, FolderOpen, Image as ImageIcon, Play, RotateCcw,
+  Box, Clock3, Edit3, Film, FolderOpen, Image as ImageIcon, Play, RotateCcw,
   Save, ScanLine, Sparkles, Trash2,
 } from 'lucide-react';
 import { UploadPanel } from './components/UploadPanel';
@@ -9,8 +9,10 @@ import { SettingsPanel } from './components/SettingsPanel';
 import { ModelDrawingPanel } from './components/ModelDrawingPanel';
 import { absoluteUrl, api, initApi } from './lib/api';
 import type {
-  AssetCategory, Job, ModelUnits, Project, SaveSlot, UpAxis, WallDetectionMode,
+  AssetCategory, Job, ModelUnits, PlanType, Project, SaveSlot, UpAxis, WallDetectionMode,
 } from './types';
+
+type Point = [number, number];
 
 function savedAt(value: string): string {
   const date = new Date(value);
@@ -28,6 +30,7 @@ function App() {
   const [wallHeight, setWallHeight] = useState(2.8);
   const [wallDetection, setWallDetection] = useState<WallDetectionMode>('clean');
   const [minimumWallLength, setMinimumWallLength] = useState(0.9);
+  const [planType, setPlanType] = useState<PlanType>('auto');
   const [renderEngine, setRenderEngine] = useState<'auto' | 'technical' | 'blender'>('auto');
   const [job, setJob] = useState<Job | null>(null);
   const pollTimer = useRef<number | null>(null);
@@ -51,7 +54,8 @@ function App() {
         if (selected.scene) {
           setPlanWidth(selected.scene.width_m);
           setWallHeight(selected.scene.wall_height_m);
-          setWallDetection(selected.scene.wall_detection_mode ?? 'clean');
+          setWallDetection((selected.scene.wall_detection_mode as WallDetectionMode) ?? 'clean');
+          setPlanType(selected.scene.plan_type ?? 'auto');
         }
       } catch (e) {
         setError(e instanceof Error ? e.message : String(e));
@@ -81,6 +85,7 @@ function App() {
 
   const uploadFloorplan = (file: File) => run(async () => {
     setProject(await api.uploadFloorplan(project!.id, file));
+    setNotice('Floor plan uploaded and empty borders removed. Choose the plan type before analysis.');
   });
 
   const uploadAsset = (category: AssetCategory, slot: string, file: File) => run(async () => {
@@ -99,9 +104,57 @@ function App() {
       wallHeight,
       wallDetection,
       minimumWallLength,
+      planType,
     );
     setProject((current) => current ? { ...current, scene, status: 'analyzed' } : current);
+    setPlanType(scene.plan_type);
+    setNotice('Analysis complete. Use Edit Rooms to correct, move, resize, add or remove rooms.');
   });
+
+  const startManualLayout = async () => {
+    if (project?.scene?.rooms.length) {
+      const confirmed = window.confirm(
+        'Replace the current detected layout with a blank manual layout? Save the current build first if you may need it later.',
+      );
+      if (!confirmed) return;
+    }
+    await run(async () => {
+      const scene = await api.startManualLayout(project!.id, planWidth, wallHeight, true);
+      setProject((current) => current ? { ...current, scene, status: 'manual_layout' } : current);
+      setNotice('Manual room layout started. Open Edit Rooms, add rooms, then drag and resize them over the plan.');
+    });
+  };
+
+  const addRoom = async () => {
+    if (!project?.scene) return;
+    const count = project.scene.rooms.length;
+    const width = Math.min(3.2, Math.max(1.2, project.scene.width_m * 0.24));
+    const depth = Math.min(3.2, Math.max(1.2, project.scene.depth_m * 0.24));
+    const xRange = Math.max(0, project.scene.width_m - width);
+    const zRange = Math.max(0, project.scene.depth_m - depth);
+    const x = xRange ? (count * 0.75) % xRange : 0;
+    const z = zRange ? (count * 0.62) % zRange : 0;
+    const scene = await api.addRoom(project.id, `Room ${count + 1}`, x, z, width, depth);
+    setProject((current) => current ? { ...current, scene, status: 'layout_updated' } : current);
+  };
+
+  const updateRoomGeometry = async (roomId: string, polygon: Point[]) => {
+    if (!project) return;
+    const scene = await api.updateRoomGeometry(project.id, roomId, polygon);
+    setProject((current) => current ? { ...current, scene, status: 'layout_updated' } : current);
+  };
+
+  const deleteRoom = async (roomId: string) => {
+    if (!project) return;
+    const scene = await api.deleteRoom(project.id, roomId);
+    setProject((current) => current ? { ...current, scene, status: 'layout_updated' } : current);
+  };
+
+  const renameRoom = async (roomId: string, name: string) => {
+    if (!project) return;
+    const scene = await api.updateRoom(project.id, roomId, name);
+    setProject((current) => current ? { ...current, scene } : current);
+  };
 
   const saveCurrentBuild = () => run(async () => {
     const name = slotName.trim() || `Saved Build ${saveSlots.length + 1}`;
@@ -118,7 +171,8 @@ function App() {
     if (restored.scene) {
       setPlanWidth(restored.scene.width_m);
       setWallHeight(restored.scene.wall_height_m);
-      setWallDetection(restored.scene.wall_detection_mode ?? 'clean');
+      setWallDetection((restored.scene.wall_detection_mode as WallDetectionMode) ?? 'clean');
+      setPlanType(restored.scene.plan_type ?? 'auto');
     }
     await refreshSaveSlots(restored.id);
     setNotice(`Loaded “${slot.name}”.`);
@@ -146,6 +200,7 @@ function App() {
       setWallHeight(2.8);
       setWallDetection('clean');
       setMinimumWallLength(0.9);
+      setPlanType('auto');
       setNotice('Active project cleared. Your saved slots are still available.');
     });
   };
@@ -267,11 +322,18 @@ function App() {
           </section>
 
           <section className="panel analysis-panel">
-            <div className="panel-heading"><div><span className="eyebrow">2. Geometry</span><h2>Clean structural extraction</h2></div><ScanLine size={22} /></div>
-            <p className="panel-copy">Clean mode removes text, furniture symbols and duplicate edges before walls are extruded.</p>
+            <div className="panel-heading"><div><span className="eyebrow">2. Geometry</span><h2>Automatic or manual layout</h2></div><ScanLine size={22} /></div>
+            <p className="panel-copy">Rendered-plan mode ignores the black background and most furniture edges. Manual mode lets you trace any room shape and size.</p>
             <div className="two-inputs">
               <label>Plan width (metres)<input type="number" min="2" step="0.1" value={planWidth} onChange={(e) => setPlanWidth(Number(e.target.value))} /></label>
               <label>Wall height (metres)<input type="number" min="2" max="8" step="0.1" value={wallHeight} onChange={(e) => setWallHeight(Number(e.target.value))} /></label>
+              <label>Plan type
+                <select value={planType} onChange={(event) => setPlanType(event.target.value as PlanType)}>
+                  <option value="auto">Auto detect</option>
+                  <option value="blueprint">Blueprint / line drawing</option>
+                  <option value="rendered">Rendered / furnished plan</option>
+                </select>
+              </label>
               <label>Wall detection
                 <select value={wallDetection} onChange={(event) => setWallDetection(event.target.value as WallDetectionMode)}>
                   <option value="clean">Clean — fewer walls</option>
@@ -284,24 +346,8 @@ function App() {
               </label>
             </div>
             <button className="primary" disabled={busy || !project?.floorplan} onClick={analyze}><Sparkles size={18} /> Analyze and build 3D scene</button>
-            {project?.scene?.rooms?.length ? (
-              <div className="room-editor">
-                <span className="eyebrow">Detected rooms</span>
-                {project.scene.rooms.map((room) => (
-                  <label key={room.id}>
-                    {room.area_m2.toFixed(1)} m²
-                    <input defaultValue={room.name} onBlur={(event) => {
-                      const name = event.currentTarget.value.trim();
-                      if (!name || name === room.name) return;
-                      void run(async () => {
-                        const scene = await api.updateRoom(project.id, room.id, name);
-                        setProject((current) => current ? { ...current, scene } : current);
-                      });
-                    }} />
-                  </label>
-                ))}
-              </div>
-            ) : null}
+            <button className="secondary full-width" disabled={busy || !project?.floorplan} onClick={() => void startManualLayout()}><Edit3 size={18} /> Start blank manual room layout</button>
+            <span className="manual-note">Manual rooms can be added, removed, dragged and resized in the Edit Rooms view.</span>
           </section>
 
           <ModelDrawingPanel
@@ -314,12 +360,19 @@ function App() {
         </aside>
 
         <section className="right-column">
-          <ScenePreview scene={project?.scene} />
+          <ScenePreview
+            project={project}
+            busy={busy}
+            onAddRoom={addRoom}
+            onUpdateRoom={updateRoomGeometry}
+            onDeleteRoom={deleteRoom}
+            onRenameRoom={renameRoom}
+          />
           <section className="output-panel">
             <div className="output-copy">
               <span className="eyebrow">4. Output</span>
               <h2>Render and walkthrough</h2>
-              <p>Technical previews work immediately. Blender produces deterministic HD/4K images and MP4 walkthroughs when installed.</p>
+              <p>Still renders now use a correctly aligned top-down orthographic camera. Blender produces HD/4K images and MP4 walkthroughs when installed.</p>
             </div>
             <div className="render-controls">
               <select value={renderEngine} onChange={(e) => setRenderEngine(e.target.value as typeof renderEngine)}>

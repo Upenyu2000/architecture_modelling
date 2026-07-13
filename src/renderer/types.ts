@@ -1,7 +1,8 @@
 export type AssetCategory = 'flooring' | 'walls' | 'kitchen' | 'living_room' | 'bathroom';
 export type WallDetectionMode = 'clean' | 'balanced' | 'detailed';
-export type ModelUnits = 'auto' | 'metres' | 'millimetres' | 'centimetres' | 'feet';
+export type PlanType = 'auto' | 'blueprint' | 'rendered';
 export type UpAxis = 'y' | 'z';
+export type ModelUnits = 'auto' | 'metres' | 'millimetres' | 'centimetres' | 'feet';
 
 export interface WallSegment {
   id: string;
@@ -43,16 +44,12 @@ export interface SceneManifest {
   camera_path: [number, number, number][];
   floor_texture_url?: string | null;
   wall_texture_url?: string | null;
+  reference_image_url?: string | null;
   detection_preview_url?: string | null;
-  wall_detection_mode?: WallDetectionMode;
+  wall_detection_mode: string;
+  plan_type: PlanType;
+  layout_mode: 'automatic' | 'manual';
   warnings: string[];
-}
-
-export interface BuildingModelFile {
-  filename: string;
-  url: string;
-  format: string;
-  size_bytes: number;
 }
 
 export interface DrawingFile {
@@ -80,8 +77,8 @@ export interface Project {
   name: string;
   created_at: string;
   updated_at: string;
-  floorplan?: { filename: string; preview_url: string } | null;
-  building_model?: BuildingModelFile | null;
+  floorplan?: { filename: string; preview_url: string; width_px?: number; height_px?: number } | null;
+  building_model?: { filename: string; url: string; format: string; size_bytes: number } | null;
   assets: Record<string, { filename: string; url: string; status: string }>;
   status: string;
   scene?: SceneManifest | null;
@@ -99,7 +96,7 @@ export interface SaveSlot {
   preview_url?: string | null;
   asset_count: number;
   has_scene: boolean;
-  has_drawings?: boolean;
+  has_drawings: boolean;
 }
 
 export interface Job {
@@ -111,7 +108,6 @@ export interface Job {
   message: string;
   output_url?: string | null;
   output_path?: string | null;
-  error?: string | null;
   metadata?: Record<string, unknown>;
   created_at: string;
   updated_at: string;

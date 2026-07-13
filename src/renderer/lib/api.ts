@@ -1,5 +1,6 @@
 import type {
-  AssetCategory, Job, ModelUnits, Project, SaveSlot, SceneManifest, UpAxis, WallDetectionMode,
+  AssetCategory, Job, ModelUnits, PlanType, Project, SaveSlot, SceneManifest,
+  UpAxis, WallDetectionMode,
 } from '../types';
 
 let cachedBaseUrl = 'http://127.0.0.1:8765';
@@ -81,6 +82,7 @@ export const api = {
     wallHeightM: number,
     wallDetection: WallDetectionMode,
     minimumWallLengthM: number,
+    planType: PlanType,
   ) => request<SceneManifest>(`/api/v1/projects/${id}/analyze`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -89,8 +91,33 @@ export const api = {
       wall_height_m: wallHeightM,
       wall_detection: wallDetection,
       minimum_wall_length_m: minimumWallLengthM,
+      plan_type: planType,
     }),
   }),
+  startManualLayout: (id: string, planWidthM: number, wallHeightM: number, clearExisting = true) =>
+    request<SceneManifest>(`/api/v1/projects/${id}/manual-layout`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        plan_width_m: planWidthM,
+        wall_height_m: wallHeightM,
+        clear_existing: clearExisting,
+      }),
+    }),
+  addRoom: (id: string, name: string, x: number, z: number, width: number, depth: number) =>
+    request<SceneManifest>(`/api/v1/projects/${id}/rooms`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, x, z, width, depth }),
+    }),
+  updateRoomGeometry: (id: string, roomId: string, polygon: [number, number][]) =>
+    request<SceneManifest>(`/api/v1/projects/${id}/rooms/${roomId}/geometry`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ polygon }),
+    }),
+  deleteRoom: (id: string, roomId: string) =>
+    request<SceneManifest>(`/api/v1/projects/${id}/rooms/${roomId}`, { method: 'DELETE' }),
   updateRoom: (id: string, roomId: string, name: string) =>
     request<SceneManifest>(`/api/v1/projects/${id}/rooms/${roomId}`, {
       method: 'PATCH',
