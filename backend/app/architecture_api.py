@@ -14,6 +14,7 @@ from .services.architecture_export import production_architecture_payload
 from .services.scene import apply_assets
 from .services.segmentation import refine_scene_with_model
 from .services.training_data import export_corrected_training_example
+from .services.vector_refinement import add_diagonal_wall_candidates
 
 router = APIRouter(prefix="/api/v1")
 
@@ -72,7 +73,8 @@ def compile_project_architecture(project_id: str, request: AnalyzeRequest) -> Sc
     if not image_path.exists():
         raise HTTPException(status_code=409, detail="The floor-plan preview is unavailable")
     try:
-        refined = refine_scene_with_model(project.scene, image_path)
+        vector_refined = add_diagonal_wall_candidates(project.scene, image_path)
+        refined = refine_scene_with_model(vector_refined, image_path)
         learned_openings = list(refined.openings)
         scene = compile_architecture(refined, image_path, request)
         if learned_openings:
