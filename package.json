@@ -1,6 +1,6 @@
 {
   "name": "dream-home-visualizer",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "private": true,
   "description": "Standalone Windows 2D-to-3D Dream Home Visualizer",
   "author": "Upenyu Hlangabeza",
@@ -9,10 +9,10 @@
   "scripts": {
     "dev": "concurrently -k \"npm:dev:renderer\" \"npm:dev:main\" \"npm:dev:electron\"",
     "dev:renderer": "vite --host 127.0.0.1",
-    "dev:main": "tsup src/main/main.ts src/main/preload.ts --format cjs --out-dir dist-electron --watch --sourcemap",
+    "dev:main": "tsup src/main/main.ts src/main/preload.ts --format cjs --platform node --external electron --out-dir dist-electron --watch --sourcemap",
     "dev:electron": "wait-on tcp:5173 file:dist-electron/main.cjs && cross-env VITE_DEV_SERVER_URL=http://127.0.0.1:5173 electron .",
     "build:renderer": "vite build",
-    "build:main": "tsup src/main/main.ts src/main/preload.ts --format cjs --out-dir dist-electron --sourcemap",
+    "build:main": "tsup src/main/main.ts src/main/preload.ts --format cjs --platform node --external electron --out-dir dist-electron --sourcemap && node scripts/verify-electron-bundle.mjs",
     "build": "npm run build:renderer && npm run build:main",
     "build:backend": "powershell -ExecutionPolicy Bypass -File scripts/build-backend.ps1",
     "dist:windows": "npm run build:backend && npm run build && electron-builder --win nsis",
