@@ -213,7 +213,7 @@ export function ScenePreview({
             <Canvas shadows dpr={[1, 2]} gl={{ preserveDrawingBuffer: true }}>
               <color attach="background" args={['#0a1711']} />
               {view === '3d' ? <fog attach="fog" args={['#0a1711', 25, 90]} /> : null}
-              <SceneContent scene={scene} referenceUrl={referenceUrl} view={view} />
+              <SceneContent scene={scene} referenceUrl={referenceUrl} view={view === '3d' ? '3d' : 'top'} />
             </Canvas>
           )
         ) : (
