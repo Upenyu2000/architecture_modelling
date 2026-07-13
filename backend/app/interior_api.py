@@ -1,14 +1,16 @@
 from __future__ import annotations
 
 import uuid
+from pathlib import Path
 from typing import Literal
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel, Field
 from shapely.geometry import Point, Polygon
 
-from .models import ArchitecturalObject, Project, SceneManifest
-from .storage import load_project, project_dir, save_project, write_json
+from .models import ArchitecturalObject, AssetFile, Project, SceneManifest
+from .storage import load_project, project_dir, save_project, save_upload, write_json
+from .services.providers import reconstruct_image_to_3d
 from .services.scene import apply_assets
 
 
@@ -16,6 +18,9 @@ router = APIRouter(prefix="/api/v1")
 
 
 MATERIALS = Literal["fabric", "leather", "oak", "walnut", "stone", "porcelain", "chrome", "painted_metal"]
+INTERIOR_CATEGORIES = {
+    "kitchen", "living_room", "bathroom", "bedroom", "dining_room", "office", "outdoor",
+}
 
 
 class FurnitureCreateRequest(BaseModel):
@@ -54,10 +59,18 @@ DEFAULT_SIZES: dict[str, tuple[float, float, float]] = {
     "armchair": (1.0, 0.92, 0.95),
     "chair": (0.62, 0.92, 0.62),
     "bed": (1.65, 0.72, 2.05),
+    "nightstand": (0.52, 0.56, 0.46),
+    "dresser": (1.35, 0.92, 0.5),
     "coffee_table": (1.15, 0.46, 0.68),
     "dining_table": (1.9, 0.78, 1.0),
+    "dining_chair": (0.55, 0.92, 0.58),
+    "sideboard": (1.6, 0.9, 0.46),
     "tv_unit": (1.8, 0.65, 0.45),
     "wardrobe": (1.8, 2.1, 0.6),
+    "desk": (1.45, 0.76, 0.7),
+    "office_chair": (0.68, 1.05, 0.68),
+    "shelving": (1.2, 2.0, 0.36),
+    "lamp": (0.42, 1.55, 0.42),
     "kitchen_island": (2.1, 0.94, 0.95),
     "countertop": (2.1, 0.94, 0.7),
     "cabinetry": (2.4, 0.92, 0.62),
@@ -70,6 +83,9 @@ DEFAULT_SIZES: dict[str, tuple[float, float, float]] = {
     "bathtub": (1.75, 0.62, 0.82),
     "vanity": (1.1, 0.9, 0.55),
     "light_fixture": (0.5, 0.65, 0.5),
+    "patio_sofa": (2.2, 0.82, 0.92),
+    "outdoor_table": (1.45, 0.75, 0.85),
+    "planter": (0.55, 0.72, 0.55),
 }
 
 
@@ -123,13 +139,53 @@ def _persist(project: Project, scene: SceneManifest) -> SceneManifest:
 @router.get("/interior-library")
 def interior_library() -> dict[str, object]:
     return {
-        "objects": [
-            {"type": object_type, "size": size}
-            for object_type, size in DEFAULT_SIZES.items()
-        ],
+        "objects": [{"type": object_type, "size": size} for object_type, size in DEFAULT_SIZES.items()],
         "styles": ["modern", "contemporary", "classic", "minimal", "industrial", "scandinavian", "luxury"],
         "materials": ["fabric", "leather", "oak", "walnut", "stone", "porcelain", "chrome", "painted_metal"],
     }
+
+
+@router.post("/projects/{project_id}/interior-assets/{category}/{slot}", response_model=Project)
+async def upload_interior_asset(
+    project_id: str,
+    category: str,
+    slot: str,
+    file: UploadFile = File(...),
+    label: str = Form(""),
+) -> Project:
+    project = _project(project_id)
+    if category not in INTERIOR_CATEGORIES:
+        raise HTTPException(status_code=400, detail="Unknown interior asset category")
+    suffix = Path(file.filename or "").suffix.lower()
+    if suffix not in {".png", ".jpg", ".jpeg", ".webp"}:
+        raise HTTPException(status_code=415, detail="Interior reference must be PNG, JPG, JPEG or WEBP")
+    destination = await save_upload(project_id, file, f"assets/{category}", f"{slot}-")
+    key = f"{category}/{slot}"
+    asset = AssetFile(
+        filename=destination.name,
+        path=str(destination),
+        url=f"/api/v1/projects/{project_id}/files/assets/{category}/{destination.name}",
+        category=category,
+        slot=slot,
+        label=label.strip() or slot.replace("_", " ").title(),
+    )
+    mesh_output = project_dir(project_id) / "assets" / category / f"{slot}.glb"
+    try:
+        generated = reconstruct_image_to_3d(destination, mesh_output)
+        if generated:
+            asset.mesh_path = str(generated)
+            asset.mesh_url = f"/api/v1/projects/{project_id}/files/assets/{category}/{generated.name}"
+            asset.status = "mesh_ready"
+        else:
+            asset.status = "reference_ready"
+    except Exception as exc:
+        asset.status = f"reference_ready; reconstruction_failed: {str(exc)[:140]}"
+    project.assets[key] = asset
+    project.status = "interior_asset_uploaded"
+    if project.scene:
+        project.scene = apply_assets(project.scene, project.assets)
+        write_json(project_dir(project.id) / "working" / "scene.json", project.scene.model_dump(mode="json"))
+    return save_project(project)
 
 
 @router.post("/projects/{project_id}/furniture", response_model=SceneManifest)
