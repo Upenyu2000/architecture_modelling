@@ -9,6 +9,35 @@ def utc_now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+OpeningType = Literal[
+    "door",
+    "double_door",
+    "pocket_door",
+    "double_pocket_door",
+    "bypass_door",
+    "sliding_door",
+    "double_sliding_door",
+    "sliding_glass_door",
+    "bifold_door",
+    "double_bifold_door",
+    "folding_door",
+    "overhead_door",
+    "revolving_door",
+    "open_passage",
+    "window",
+    "fixed_window",
+    "casement_window",
+    "double_casement_window",
+    "glider_window",
+    "garden_window",
+    "bay_window",
+    "bow_window",
+    "double_hung_window",
+    "vertical_sliding_window",
+    "horizontal_sliding_window",
+]
+
+
 class FloorplanFile(BaseModel):
     filename: str
     path: str
@@ -62,13 +91,20 @@ class RoomShape(BaseModel):
 
 class Opening(BaseModel):
     id: str
-    opening_type: Literal["door", "window", "sliding_door", "bifold_door", "open_passage"]
+    opening_type: OpeningType
     position: tuple[float, float]
-    width: float
-    height: float = 2.1
+    width: float = Field(gt=0.15, le=20.0)
+    height: float = Field(default=2.1, gt=0.15, le=12.0)
     rotation_deg: float = 0.0
     wall_id: str | None = None
+    placement_ratio: float | None = Field(default=None, ge=0.0, le=1.0)
     swing_direction: Literal["clockwise", "counterclockwise", "none"] = "none"
+    hinge_side: Literal["left", "right", "centre", "none"] = "none"
+    swing_angle_deg: float = Field(default=90.0, ge=0.0, le=360.0)
+    sill_height: float = Field(default=0.9, ge=0.0, le=8.0)
+    interactive: bool = True
+    default_open: bool = False
+    source: Literal["heuristic", "model", "vision", "manual"] = "heuristic"
     confidence: float = Field(default=0.6, ge=0.0, le=1.0)
 
 
@@ -262,6 +298,34 @@ class RoomCreateRequest(BaseModel):
 
 class RoomGeometryRequest(BaseModel):
     polygon: list[tuple[float, float]] = Field(min_length=3, max_length=64)
+
+
+class OpeningCreateRequest(BaseModel):
+    opening_type: OpeningType = "door"
+    wall_id: str
+    placement_ratio: float = Field(default=0.5, ge=0.0, le=1.0)
+    width: float | None = Field(default=None, gt=0.15, le=20.0)
+    height: float | None = Field(default=None, gt=0.15, le=12.0)
+    swing_direction: Literal["clockwise", "counterclockwise", "none"] = "clockwise"
+    hinge_side: Literal["left", "right", "centre", "none"] = "left"
+    swing_angle_deg: float = Field(default=90.0, ge=0.0, le=360.0)
+    sill_height: float = Field(default=0.9, ge=0.0, le=8.0)
+    interactive: bool = True
+    default_open: bool = False
+
+
+class OpeningUpdateRequest(BaseModel):
+    opening_type: OpeningType | None = None
+    wall_id: str | None = None
+    placement_ratio: float | None = Field(default=None, ge=0.0, le=1.0)
+    width: float | None = Field(default=None, gt=0.15, le=20.0)
+    height: float | None = Field(default=None, gt=0.15, le=12.0)
+    swing_direction: Literal["clockwise", "counterclockwise", "none"] | None = None
+    hinge_side: Literal["left", "right", "centre", "none"] | None = None
+    swing_angle_deg: float | None = Field(default=None, ge=0.0, le=360.0)
+    sill_height: float | None = Field(default=None, ge=0.0, le=8.0)
+    interactive: bool | None = None
+    default_open: bool | None = None
 
 
 class DrawingRequest(BaseModel):
