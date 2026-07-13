@@ -97,7 +97,10 @@ export const api = {
     const body = new FormData();
     body.append('file', file);
     body.append('label', file.name.replace(/\.[^.]+$/, ''));
-    return request<Project>(`/api/v1/projects/${id}/assets/${category}/${slot}`, { method: 'POST', body });
+    const route = category === 'flooring' || category === 'walls'
+      ? `/api/v1/projects/${id}/assets/${category}/${slot}`
+      : `/api/v1/projects/${id}/interior-assets/${category}/${slot}`;
+    return request<Project>(route, { method: 'POST', body });
   },
   analyze: (
     id: string,
