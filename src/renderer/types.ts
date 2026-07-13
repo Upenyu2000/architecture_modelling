@@ -4,6 +4,33 @@ export type PlanType = 'auto' | 'blueprint' | 'rendered';
 export type UpAxis = 'y' | 'z';
 export type ModelUnits = 'auto' | 'metres' | 'millimetres' | 'centimetres' | 'feet';
 
+export type OpeningType =
+  | 'door'
+  | 'double_door'
+  | 'pocket_door'
+  | 'double_pocket_door'
+  | 'bypass_door'
+  | 'sliding_door'
+  | 'double_sliding_door'
+  | 'sliding_glass_door'
+  | 'bifold_door'
+  | 'double_bifold_door'
+  | 'folding_door'
+  | 'overhead_door'
+  | 'revolving_door'
+  | 'open_passage'
+  | 'window'
+  | 'fixed_window'
+  | 'casement_window'
+  | 'double_casement_window'
+  | 'glider_window'
+  | 'garden_window'
+  | 'bay_window'
+  | 'bow_window'
+  | 'double_hung_window'
+  | 'vertical_sliding_window'
+  | 'horizontal_sliding_window';
+
 export interface WallSegment {
   id: string;
   start: [number, number];
@@ -29,14 +56,35 @@ export interface RoomShape {
 
 export interface Opening {
   id: string;
-  opening_type: 'door' | 'window' | 'sliding_door' | 'bifold_door' | 'open_passage';
+  opening_type: OpeningType;
   position: [number, number];
   width: number;
   height: number;
   rotation_deg: number;
   wall_id?: string | null;
+  placement_ratio?: number | null;
   swing_direction: 'clockwise' | 'counterclockwise' | 'none';
+  hinge_side: 'left' | 'right' | 'centre' | 'none';
+  swing_angle_deg: number;
+  sill_height: number;
+  interactive: boolean;
+  default_open: boolean;
+  source: 'heuristic' | 'model' | 'vision' | 'manual';
   confidence: number;
+}
+
+export interface OpeningPayload {
+  opening_type: OpeningType;
+  wall_id: string;
+  placement_ratio: number;
+  width?: number;
+  height?: number;
+  swing_direction: 'clockwise' | 'counterclockwise' | 'none';
+  hinge_side: 'left' | 'right' | 'centre' | 'none';
+  swing_angle_deg: number;
+  sill_height: number;
+  interactive: boolean;
+  default_open: boolean;
 }
 
 export interface SceneAsset {
