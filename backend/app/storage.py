@@ -8,9 +8,11 @@ from pathlib import Path
 from fastapi import UploadFile
 
 from .config import PROJECTS_DIR, ensure_directories
-from .models import Project, utc_now
+from .models import Project, SaveSlotSummary, utc_now
 
 SAFE_NAME = re.compile(r"[^a-zA-Z0-9._-]+")
+SLOT_ID = re.compile(r"^[a-f0-9]{32}$")
+ACTIVE_FOLDERS = ("uploads", "assets", "outputs", "working")
 
 
 def project_dir(project_id: str) -> Path:
@@ -21,12 +23,19 @@ def project_file(project_id: str) -> Path:
     return project_dir(project_id) / "project.json"
 
 
+def save_slots_dir(project_id: str) -> Path:
+    path = project_dir(project_id) / "save_slots"
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
 def create_project(name: str) -> Project:
     ensure_directories()
     project = Project(id=str(uuid.uuid4()), name=name.strip() or "My Dream Home")
     directory = project_dir(project.id)
-    for child in ("uploads", "assets", "outputs", "working"):
+    for child in ACTIVE_FOLDERS:
         (directory / child).mkdir(parents=True, exist_ok=True)
+    save_slots_dir(project.id)
     save_project(project)
     return project
 
@@ -74,3 +83,113 @@ def reset_working(project_id: str) -> Path:
         shutil.rmtree(path)
     path.mkdir(parents=True)
     return path
+
+
+def _clear_active_folders(project_id: str) -> None:
+    root = project_dir(project_id)
+    for folder in ACTIVE_FOLDERS:
+        path = root / folder
+        if path.exists():
+            shutil.rmtree(path)
+        path.mkdir(parents=True, exist_ok=True)
+
+
+def reset_project(project_id: str) -> Project:
+    project = load_project(project_id)
+    _clear_active_folders(project_id)
+    project.floorplan = None
+    project.assets = {}
+    project.scene = None
+    project.status = "created"
+    return save_project(project)
+
+
+def _slot_dir(project_id: str, slot_id: str) -> Path:
+    if not SLOT_ID.fullmatch(slot_id):
+        raise FileNotFoundError(slot_id)
+    return save_slots_dir(project_id) / slot_id
+
+
+def _read_slot_summary(project_id: str, slot_id: str) -> SaveSlotSummary:
+    path = _slot_dir(project_id, slot_id) / "slot.json"
+    if not path.exists():
+        raise FileNotFoundError(slot_id)
+    return SaveSlotSummary.model_validate_json(path.read_text(encoding="utf-8"))
+
+
+def list_save_slots(project_id: str) -> list[SaveSlotSummary]:
+    slots: list[SaveSlotSummary] = []
+    for item in save_slots_dir(project_id).iterdir():
+        if not item.is_dir() or not SLOT_ID.fullmatch(item.name):
+            continue
+        try:
+            slots.append(_read_slot_summary(project_id, item.name))
+        except (FileNotFoundError, ValueError):
+            continue
+    return sorted(slots, key=lambda slot: slot.updated_at, reverse=True)
+
+
+def create_save_slot(project_id: str, name: str) -> SaveSlotSummary:
+    project = load_project(project_id)
+    slot_id = uuid.uuid4().hex
+    slot_root = _slot_dir(project_id, slot_id)
+    data_root = slot_root / "data"
+    data_root.mkdir(parents=True, exist_ok=False)
+
+    for folder in ACTIVE_FOLDERS:
+        source = project_dir(project_id) / folder
+        destination = data_root / folder
+        if source.exists():
+            shutil.copytree(source, destination)
+        else:
+            destination.mkdir(parents=True, exist_ok=True)
+
+    (slot_root / "project.json").write_text(project.model_dump_json(indent=2), encoding="utf-8")
+    timestamp = utc_now()
+    summary = SaveSlotSummary(
+        id=slot_id,
+        name=name.strip() or "Saved Build",
+        created_at=timestamp,
+        updated_at=timestamp,
+        status=project.status,
+        floorplan_filename=project.floorplan.filename if project.floorplan else None,
+        preview_url=project.floorplan.preview_url if project.floorplan else None,
+        asset_count=len(project.assets),
+        has_scene=project.scene is not None,
+    )
+    (slot_root / "slot.json").write_text(summary.model_dump_json(indent=2), encoding="utf-8")
+    return summary
+
+
+def restore_save_slot(project_id: str, slot_id: str) -> Project:
+    summary = _read_slot_summary(project_id, slot_id)
+    slot_root = _slot_dir(project_id, slot_id)
+    snapshot_path = slot_root / "project.json"
+    if not snapshot_path.exists():
+        raise FileNotFoundError(slot_id)
+
+    snapshot = Project.model_validate_json(snapshot_path.read_text(encoding="utf-8"))
+    _clear_active_folders(project_id)
+    data_root = slot_root / "data"
+    for folder in ACTIVE_FOLDERS:
+        source = data_root / folder
+        destination = project_dir(project_id) / folder
+        if destination.exists():
+            shutil.rmtree(destination)
+        if source.exists():
+            shutil.copytree(source, destination)
+        else:
+            destination.mkdir(parents=True, exist_ok=True)
+
+    snapshot.id = project_id
+    snapshot.name = summary.name
+    if snapshot.scene:
+        snapshot.scene.project_id = project_id
+    return save_project(snapshot)
+
+
+def delete_save_slot(project_id: str, slot_id: str) -> None:
+    slot_root = _slot_dir(project_id, slot_id)
+    if not slot_root.exists():
+        raise FileNotFoundError(slot_id)
+    shutil.rmtree(slot_root)
