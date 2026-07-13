@@ -1,8 +1,8 @@
 {
   "name": "dream-home-visualizer",
-  "version": "1.4.0",
+  "version": "1.5.0",
   "private": true,
-  "description": "Standalone Windows free-form architectural parser, PBR cutaway renderer and walkthrough compiler",
+  "description": "Standalone Windows free-form architectural parser, procedural interior designer, PBR cutaway renderer and portal walkthrough compiler",
   "author": "Upenyu Hlangabeza",
   "main": "dist-electron/main.cjs",
   "type": "module",
