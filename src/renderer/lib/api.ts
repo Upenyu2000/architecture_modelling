@@ -2,6 +2,7 @@ import type {
   AssetCategory, Job, MaterialUpdate, ModelUnits, OpeningPayload, PlanType, Project, SaveSlot,
   SceneManifest, UpAxis, WallDetectionMode,
 } from '../types';
+import type { FurniturePayload, InteriorLibrary } from '../interior-types';
 
 export type AppSettingValue = string | boolean | number;
 
@@ -187,6 +188,21 @@ export const api = {
     }),
   deleteOpening: (id: string, openingId: string) =>
     request<SceneManifest>(`/api/v1/projects/${id}/openings/${openingId}`, { method: 'DELETE' }),
+  interiorLibrary: () => request<InteriorLibrary>('/api/v1/interior-library'),
+  addFurniture: (id: string, furniture: FurniturePayload) =>
+    request<SceneManifest>(`/api/v1/projects/${id}/furniture`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(furniture),
+    }),
+  updateFurniture: (id: string, objectId: string, furniture: Partial<FurniturePayload>) =>
+    request<SceneManifest>(`/api/v1/projects/${id}/furniture/${objectId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(furniture),
+    }),
+  deleteFurniture: (id: string, objectId: string) =>
+    request<SceneManifest>(`/api/v1/projects/${id}/furniture/${objectId}`, { method: 'DELETE' }),
   render: (id: string, quality: 'preview' | '1080p' | '4k', engine: 'auto' | 'technical' | 'blender') =>
     request<Job>(`/api/v1/projects/${id}/render`, {
       method: 'POST',
