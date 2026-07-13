@@ -51,8 +51,47 @@
 .selected-room-fields label { display: grid; grid-template-columns: auto minmax(100px, 1fr); align-items: center; gap: 7px; }
 .selected-room-fields input { padding: 6px 8px; }
 .manual-note { display: block; margin-top: 7px; color: #6e8a79; text-align: center; font-size: 10px; }
+
+.opening-editor { height: 100%; min-height: 610px; display: grid; grid-template-columns: minmax(0, 1fr) 320px; background: #07130e; }
+.opening-stage { position: relative; min-width: 0; margin: 12px; border: 1px solid #385845; border-radius: 10px; background: #edf1ee; overflow: hidden; }
+.opening-stage svg { width: 100%; height: 100%; display: block; touch-action: none; user-select: none; }
+.opening-room { fill: rgba(61, 130, 90, .09); stroke: rgba(83, 146, 107, .35); stroke-width: .025; vector-effect: non-scaling-stroke; pointer-events: none; }
+.opening-wall { stroke: rgba(20, 30, 24, .82); stroke-width: .14; vector-effect: non-scaling-stroke; cursor: crosshair; transition: stroke .15s, stroke-width .15s; }
+.opening-wall:hover { stroke: #3a9f68; stroke-width: .22; }
+.opening-wall.selected { stroke: #e4a94f; stroke-width: .23; }
+.wall-index { fill: #395346; font-size: .22px; text-anchor: middle; dominant-baseline: central; pointer-events: none; paint-order: stroke; stroke: #fff; stroke-width: .035px; }
+.opening-symbol { cursor: pointer; }
+.opening-symbol line { stroke-width: .16; vector-effect: non-scaling-stroke; }
+.opening-symbol circle { vector-effect: non-scaling-stroke; stroke: #07130e; stroke-width: .025; }
+.opening-symbol text { fill: #13271b; font-size: .2px; text-anchor: middle; dominant-baseline: auto; paint-order: stroke; stroke: #fff; stroke-width: .045px; pointer-events: none; }
+.opening-symbol.selected line { stroke-width: .27; }
+.opening-symbol.selected circle { stroke: #fff; stroke-width: .06; }
+.opening-empty { position: absolute; inset: 0; display: grid; place-content: center; color: #33483c; font-size: 13px; pointer-events: none; }
+.opening-controls { display: flex; flex-direction: column; gap: 10px; min-width: 0; padding: 14px; border-left: 1px solid #294938; background: #0a1c14; overflow-y: auto; }
+.opening-heading { display: flex; gap: 9px; align-items: flex-start; padding-bottom: 10px; border-bottom: 1px solid #294938; color: #d9efe1; }
+.opening-heading > div { display: grid; gap: 2px; }
+.opening-heading span { color: #789381; font-size: 11px; }
+.opening-controls label { display: grid; gap: 5px; color: #9ab4a3; font-size: 11px; }
+.opening-controls label > span { color: #d7bd77; }
+.opening-controls input, .opening-controls select { padding: 8px 9px; }
+.opening-controls input[type="range"] { padding: 0; }
+.opening-number-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.opening-controls .checkbox-row { display: grid; grid-template-columns: 18px 1fr; align-items: center; gap: 7px; }
+.opening-controls .checkbox-row input { width: 15px; height: 15px; }
+.opening-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; padding-top: 5px; }
+.opening-actions .primary { grid-column: 1 / -1; margin: 0; }
+.opening-actions .secondary, .opening-actions .danger-icon { margin: 0; border-radius: 8px; padding: 9px; display: inline-flex; justify-content: center; align-items: center; gap: 6px; }
+.opening-actions .danger-icon { border: 1px solid #7d4144; background: #35191c; color: #ffc2c5; }
+.opening-legend { display: flex; flex-wrap: wrap; gap: 8px 12px; margin-top: auto; padding-top: 10px; border-top: 1px solid #294938; color: #779180; font-size: 10px; }
+.opening-legend span { display: inline-flex; gap: 5px; align-items: center; }
+.opening-legend i { width: 9px; height: 9px; border-radius: 50%; }
+.manual-opening { background: #77e19d; }
+.detected-opening { background: #f0c66a; }
+.window-opening { background: #78c8ef; }
+
 @media (max-width: 1500px) {
   .viewer-header { align-items: flex-start; }
   .viewer-actions { max-width: 620px; align-items: flex-end; flex-direction: column; }
   .canvas-wrap { height: 560px; }
+  .opening-editor { grid-template-columns: minmax(0, 1fr) 290px; }
 }
