@@ -13,6 +13,7 @@ import { RoomLayoutEditor } from './RoomLayoutEditor';
 
 type Point = [number, number];
 type ViewMode = 'isometric' | 'top' | 'walkthrough' | 'edit' | 'structure' | 'data';
+type RenderedViewMode = 'isometric' | 'top' | 'walkthrough';
 
 interface Props {
   project: Project | null;
@@ -248,7 +249,7 @@ function FirstPersonRig({ scene }: { scene: SceneManifest }) {
 function SceneContent({ scene, referenceUrl, view }: {
   scene: SceneManifest;
   referenceUrl?: string;
-  view: 'top' | 'isometric' | 'walkthrough';
+  view: RenderedViewMode;
 }) {
   const centreX = scene.width_m / 2;
   const centreZ = scene.depth_m / 2;
@@ -336,6 +337,8 @@ export function ScenePreview({
     if (scene.layout_mode === 'manual' && scene.rooms.length === 0) setView('edit');
   }, [scene?.layout_mode, scene?.rooms.length]);
 
+  const renderedView: RenderedViewMode = view === 'top' || view === 'walkthrough' ? view : 'isometric';
+
   return (
     <section className="viewer-panel">
       <div className="viewer-header">
@@ -383,7 +386,7 @@ export function ScenePreview({
               <Canvas shadows dpr={[1, 2]} gl={{ preserveDrawingBuffer: true, antialias: true }}>
                 <color attach="background" args={[view === 'walkthrough' ? '#dce8ef' : '#0a1711']} />
                 {view === 'isometric' ? <fog attach="fog" args={['#0a1711', 35, 120]} /> : null}
-                <SceneContent scene={scene} referenceUrl={referenceUrl} view={view} />
+                <SceneContent scene={scene} referenceUrl={referenceUrl} view={renderedView} />
               </Canvas>
               {view === 'walkthrough' ? (
                 <div className="walkthrough-help"><strong>Click inside to look around</strong><span>WASD / arrows move · Shift runs · Esc releases mouse</span></div>
