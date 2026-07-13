@@ -10,6 +10,8 @@ export interface WallSegment {
   end: [number, number];
   height: number;
   thickness: number;
+  wall_type: 'exterior' | 'interior' | 'partition';
+  confidence: number;
 }
 
 export interface RoomShape {
@@ -18,6 +20,23 @@ export interface RoomShape {
   polygon: [number, number][];
   area_m2: number;
   centroid: [number, number];
+  room_type: string;
+  width_m?: number | null;
+  depth_m?: number | null;
+  extracted_dimension?: string | null;
+  label_confidence: number;
+}
+
+export interface Opening {
+  id: string;
+  opening_type: 'door' | 'window' | 'sliding_door' | 'bifold_door' | 'open_passage';
+  position: [number, number];
+  width: number;
+  height: number;
+  rotation_deg: number;
+  wall_id?: string | null;
+  swing_direction: 'clockwise' | 'counterclockwise' | 'none';
+  confidence: number;
 }
 
 export interface SceneAsset {
@@ -31,6 +50,56 @@ export interface SceneAsset {
   size: [number, number, number];
   source_url?: string | null;
   mesh_url?: string | null;
+  source: string;
+  confidence: number;
+}
+
+export interface ArchitecturalObject {
+  id: string;
+  object_type: string;
+  asset_id: string;
+  category: 'furniture' | 'fixture' | 'utility' | 'structure';
+  room_id?: string | null;
+  coordinates: [number, number, number];
+  rotation_deg: number;
+  scale: [number, number, number];
+  size: [number, number, number];
+  source: 'vision' | 'symbol_heuristic' | 'room_inference' | 'user';
+  confidence: number;
+}
+
+export interface MaterialSpec {
+  name: string;
+  material_type: string;
+  hex_color: string;
+  roughness: number;
+  metallic: number;
+  specular: number;
+  texture_url?: string | null;
+  normal_url?: string | null;
+  displacement_url?: string | null;
+  texture_scale: number;
+}
+
+export interface SceneMaterials {
+  palette_name: string;
+  floor_global: MaterialSpec;
+  walls_global: MaterialSpec;
+  exterior_walls: MaterialSpec;
+  accent: MaterialSpec;
+  fixture_metal: MaterialSpec;
+}
+
+export interface ProjectMetadata {
+  scale_ratio: string;
+  detected_rooms: number;
+  detected_openings: number;
+  detected_objects: number;
+  parser_version: string;
+  source_plan_type: string;
+  structural_confidence: number;
+  ocr_status: string;
+  extracted_labels: string[];
 }
 
 export interface SceneManifest {
@@ -42,14 +111,34 @@ export interface SceneManifest {
   rooms: RoomShape[];
   assets: SceneAsset[];
   camera_path: [number, number, number][];
+  openings: Opening[];
+  fixtures_and_furniture: ArchitecturalObject[];
+  materials: SceneMaterials;
+  project_metadata: ProjectMetadata;
+  first_person_start?: [number, number, number] | null;
+  collision_segments: [[number, number], [number, number]][];
+  ceiling_height_m: number;
+  cutaway_height_m: number;
   floor_texture_url?: string | null;
   wall_texture_url?: string | null;
   reference_image_url?: string | null;
   detection_preview_url?: string | null;
+  architecture_json_url?: string | null;
   wall_detection_mode: string;
   plan_type: PlanType;
   layout_mode: 'automatic' | 'manual';
   warnings: string[];
+}
+
+export interface MaterialUpdate {
+  palette_name: string;
+  floor_type: string;
+  floor_color: string;
+  wall_color: string;
+  exterior_color: string;
+  accent_color: string;
+  roughness: number;
+  cutaway_height_m: number;
 }
 
 export interface DrawingFile {
