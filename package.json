@@ -1,8 +1,8 @@
 {
   "name": "dream-home-visualizer",
-  "version": "1.5.6",
+  "version": "1.5.7",
   "private": true,
-  "description": "Standalone Windows architectural visualizer with a fixed synchronized viewport, independently scrolling control rail, protected renderer spacing, image-derived boundary learning, PBR interiors and locked first-person controls",
+  "description": "Standalone Windows architectural visualizer with full-plan interior editing, fixed synchronized viewport, independently scrolling control rail, protected renderer spacing, image-derived boundary learning, PBR interiors and locked first-person controls",
   "author": "Upenyu Hlangabeza",
   "main": "dist-electron/main.cjs",
   "type": "module",
