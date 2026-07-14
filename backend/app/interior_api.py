@@ -7,15 +7,14 @@ from typing import Literal
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel, Field
 from shapely.geometry import Point, Polygon
+from shapely.ops import unary_union
 
 from .models import ArchitecturalObject, AssetFile, Project, SceneManifest
 from .storage import load_project, project_dir, save_project, save_upload, write_json
 from .services.providers import reconstruct_image_to_3d
 from .services.scene import apply_assets
 
-
 router = APIRouter(prefix="/api/v1")
-
 
 MATERIALS = Literal["fabric", "leather", "oak", "walnut", "stone", "porcelain", "chrome", "painted_metal"]
 INTERIOR_CATEGORIES = {
@@ -112,19 +111,57 @@ def _decode(value: str, fallback_type: str) -> tuple[str, str, str, str, str | N
     return object_type, style, material, color, parts[4] or None
 
 
-def _room_at(scene: SceneManifest, x: float, z: float, requested: str | None = None) -> str | None:
-    if requested and any(room.id == requested for room in scene.rooms):
-        return requested
-    point = Point(x, z)
+def _room_polygons(scene: SceneManifest) -> list[tuple[str, Polygon]]:
+    result: list[tuple[str, Polygon]] = []
     for room in scene.rooms:
         if len(room.polygon) < 3:
             continue
         polygon = Polygon(room.polygon)
-        if polygon.is_valid and (polygon.contains(point) or polygon.touches(point)):
-            return room.id
+        if polygon.is_valid and not polygon.is_empty:
+            result.append((room.id, polygon))
+    return result
+
+
+def _room_at(scene: SceneManifest, x: float, z: float, requested: str | None = None) -> str | None:
+    point = Point(x, z)
+    polygons = _room_polygons(scene)
+    containing = next((room_id for room_id, polygon in polygons if polygon.contains(point) or polygon.touches(point)), None)
+    if containing:
+        return containing
+
+    # Automatic layouts use the confirmed room union as the authoritative
+    # interior. Do not silently attach an outside point to the nearest room.
+    if scene.layout_mode == "automatic":
+        return None
+
+    if requested and any(room.id == requested for room in scene.rooms):
+        return requested
     if not scene.rooms:
         return None
     return min(scene.rooms, key=lambda room: (room.centroid[0] - x) ** 2 + (room.centroid[1] - z) ** 2).id
+
+
+def _validate_furniture_footprint(scene: SceneManifest, x: float, z: float, width: float, depth: float) -> str | None:
+    room_id = _room_at(scene, x, z)
+    if scene.layout_mode != "automatic":
+        return room_id
+    polygons = [polygon for _room_id, polygon in _room_polygons(scene)]
+    if not polygons:
+        raise HTTPException(status_code=422, detail="No confirmed interior rooms are available")
+    interior = unary_union(polygons).buffer(max(0.08, min(width, depth) * 0.08), join_style=2)
+    footprint = Polygon([
+        (x - width / 2, z - depth / 2),
+        (x + width / 2, z - depth / 2),
+        (x + width / 2, z + depth / 2),
+        (x - width / 2, z + depth / 2),
+    ])
+    covered_ratio = float(footprint.intersection(interior).area) / max(float(footprint.area), 1e-6)
+    if room_id is None or covered_ratio < 0.72:
+        raise HTTPException(
+            status_code=422,
+            detail="Furniture cannot be placed in exterior white space. Move its centre and footprint inside the detected house boundary.",
+        )
+    return room_id
 
 
 def _persist(project: Project, scene: SceneManifest) -> SceneManifest:
@@ -208,12 +245,13 @@ def create_furniture(project_id: str, request: FurnitureCreateRequest) -> SceneM
     x = max(0.0, min(scene.width_m, request.x))
     z = max(0.0, min(scene.depth_m, request.z))
     size = (request.width, request.height, request.depth)
+    room_id = _validate_furniture_footprint(scene, x, z, request.width, request.depth)
     item = ArchitecturalObject(
         id=f"furniture-{uuid.uuid4().hex[:10]}",
         object_type=request.object_type,
         asset_id=_encode(request.object_type, request.style, request.material, request.color, request.reference_asset_key),
         category="fixture" if request.object_type in {"sink", "toilet", "bathtub", "vanity"} else "utility" if request.object_type in {"fridge", "stove", "washing_machine", "dryer"} else "furniture",
-        room_id=_room_at(scene, x, z, request.room_id),
+        room_id=request.room_id if request.room_id and request.room_id == room_id else room_id,
         coordinates=(round(x, 3), round(request.height / 2, 3), round(z, 3)),
         rotation_deg=request.rotation_deg,
         size=tuple(round(value, 3) for value in size),
@@ -246,10 +284,11 @@ def update_furniture(project_id: str, object_id: str, request: FurnitureUpdateRe
     width = request.width if request.width is not None else item.size[0]
     height = request.height if request.height is not None else item.size[1]
     depth = request.depth if request.depth is not None else item.size[2]
+    room_id = _validate_furniture_footprint(scene, x, z, width, depth)
 
     item.object_type = object_type
     item.asset_id = _encode(object_type, style, material, color, reference)
-    item.room_id = _room_at(scene, x, z, request.room_id or item.room_id)
+    item.room_id = request.room_id if request.room_id and request.room_id == room_id else room_id
     item.coordinates = (round(x, 3), round(height / 2, 3), round(z, 3))
     item.rotation_deg = request.rotation_deg if request.rotation_deg is not None else item.rotation_deg
     item.size = (round(width, 3), round(height, 3), round(depth, 3))
