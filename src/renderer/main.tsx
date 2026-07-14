@@ -9,6 +9,7 @@ import './interior.css';
 import './stability-1.5.2.css';
 import './viewport-1.5.3.css';
 import './runtime-1.5.4.css';
+import './standalone-layout-1.5.5.css';
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
