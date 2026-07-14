@@ -33,10 +33,8 @@ jobs:
       - name: Type check
         shell: pwsh
         run: |
-          $Output = npm run typecheck 2>&1
-          $ExitCode = $LASTEXITCODE
-          $Output | Tee-Object -FilePath typecheck.log
-          exit $ExitCode
+          npm run typecheck 2>&1 | Tee-Object -FilePath typecheck.log
+          exit $LASTEXITCODE
       - name: Upload typecheck diagnostics
         if: always()
         uses: actions/upload-artifact@v4
@@ -47,10 +45,8 @@ jobs:
       - name: Build installer
         shell: pwsh
         run: |
-          $Output = npm run dist:windows 2>&1
-          $ExitCode = $LASTEXITCODE
-          $Output | Tee-Object -FilePath windows-build.log
-          exit $ExitCode
+          npm run dist:windows 2>&1 | Tee-Object -FilePath windows-build.log
+          exit $LASTEXITCODE
       - name: Upload Windows build diagnostics
         if: always()
         uses: actions/upload-artifact@v4
