@@ -35,7 +35,7 @@ assert(runtimeStyles.includes('.room-pan-controls'), 'Edit Rooms pan styling is 
 assert(standaloneStyles.includes('--workspace-column-gap: clamp(34px, 3.6vw, 64px)'), 'The protected renderer gutter is missing.');
 assert(standaloneStyles.includes('.left-column::after'), 'The visual separator between controls and rendering is missing.');
 assert(standaloneStyles.includes('contain: layout paint style'), 'Independent paint containment is missing.');
-assert(standaloneStyles.includes('background:\n    linear-gradient'), 'The opaque standalone control-rail background is missing.');
+assert(/background:\s*linear-gradient/.test(standaloneStyles), 'The opaque standalone control-rail background is missing.');
 assert(standaloneStyles.includes('@media (max-width: 1060px)'), 'The early non-overlap stacking breakpoint is missing.');
 assert(standaloneStyles.includes('.three-view-wrap canvas'), 'WebGL canvas width containment is missing.');
 
