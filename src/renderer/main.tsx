@@ -6,6 +6,7 @@ import './styles.css';
 import './room-editor.css';
 import './production.css';
 import './interior.css';
+import './stability-1.5.2.css';
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
