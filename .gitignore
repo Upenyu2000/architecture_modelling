@@ -22,3 +22,4 @@ __pycache__/
 Thumbs.db
 projects/
 models/
+src/renderer/components/ScenePreview.v153.tsx
