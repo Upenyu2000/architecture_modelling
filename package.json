@@ -1,8 +1,8 @@
 {
   "name": "dream-home-visualizer",
-  "version": "1.5.4",
+  "version": "1.5.5",
   "private": true,
-  "description": "Standalone Windows free-form architectural parser with image-derived boundary learning, realistic PBR interiors, character model imports and locked first-person walkthrough controls",
+  "description": "Standalone Windows architectural visualizer with protected control rail, non-overlapping rendering workspace, image-derived boundary learning, PBR interiors and locked first-person controls",
   "author": "Upenyu Hlangabeza",
   "main": "dist-electron/main.cjs",
   "type": "module",
