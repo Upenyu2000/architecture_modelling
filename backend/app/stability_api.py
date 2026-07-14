@@ -40,7 +40,10 @@ async def upload_floorplan(project_id: str, file: UploadFile = File(...)) -> Pro
         raise HTTPException(status_code=415, detail="Floor plans must be PNG, JPG, WEBP or PDF")
 
     source = await save_upload(project_id, file, "uploads/floorplans")
-    preview = project_dir(project_id) / "working" / "floorplan.png"
+    working = project_dir(project_id) / "working"
+    preview = working / "floorplan.png"
+    for stale_name in ("building-mask.png", "interior-mask.png", "detection-preview.png"):
+        (working / stale_name).unlink(missing_ok=True)
     try:
         rasterize_floorplan(source, preview)
         with Image.open(preview) as image:
@@ -71,6 +74,19 @@ def floorplan_preview(project_id: str) -> FileResponse:
         raise HTTPException(status_code=404, detail="Floor-plan preview is unavailable")
     return FileResponse(
         preview,
+        media_type="image/png",
+        headers={"Cache-Control": "no-store, max-age=0", "Pragma": "no-cache"},
+    )
+
+
+@router.get("/projects/{project_id}/building-mask")
+def building_mask(project_id: str) -> FileResponse:
+    _project(project_id)
+    target = project_dir(project_id) / "working" / "building-mask.png"
+    if not target.exists():
+        raise HTTPException(status_code=404, detail="Building mask is unavailable until the floor plan is analysed")
+    return FileResponse(
+        target,
         media_type="image/png",
         headers={"Cache-Control": "no-store, max-age=0", "Pragma": "no-cache"},
     )
