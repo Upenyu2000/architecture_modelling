@@ -110,6 +110,14 @@ def load_project(project_id: str) -> Project:
 
 def save_project(project: Project) -> Project:
     project = normalise_project_urls(project)
+    if project.scene:
+        from .services.floor_mask import write_scene_floor_mask
+
+        mask_path = project_dir(project.id) / "working" / "building-mask.png"
+        # Automatic analysed plans keep their image-derived envelope. Manual and
+        # legacy scenes receive a deterministic room/portal fallback mask.
+        if project.scene.layout_mode == "manual" or not mask_path.exists():
+            write_scene_floor_mask(project.scene, mask_path)
     project.updated_at = utc_now()
     path = project_file(project.id)
     path.parent.mkdir(parents=True, exist_ok=True)
