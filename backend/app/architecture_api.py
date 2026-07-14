@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import math
+import zipfile
 from pathlib import Path
 
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
@@ -132,7 +133,7 @@ async def import_seed_pack(
     archive_path = await save_upload(project_id, file, "training-imports", "seed-pack-")
     try:
         return import_training_seed_pack(archive_path, confirmed_rights=confirmed_rights)
-    except (ValueError, zipfile.BadZipFile) as exc:  # type: ignore[name-defined]
+    except (ValueError, zipfile.BadZipFile) as exc:
         raise HTTPException(status_code=422, detail=str(exc))
 
 
