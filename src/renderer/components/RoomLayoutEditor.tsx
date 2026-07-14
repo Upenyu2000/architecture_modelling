@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Move, Plus, Scaling, Trash2 } from 'lucide-react';
+import { Maximize2, Move, Plus, Trash2, ZoomIn, ZoomOut } from 'lucide-react';
 import type { RoomShape, SceneManifest } from '../types';
 
 type Point = [number, number];
@@ -25,6 +25,10 @@ interface Props {
   onDeleteRoom: (roomId: string) => Promise<void>;
   onRenameRoom: (roomId: string, name: string) => Promise<void>;
 }
+
+const MIN_ZOOM = 0.45;
+const MAX_ZOOM = 3;
+const DEFAULT_ZOOM = 0.8;
 
 function bounds(points: Point[]) {
   const xs = points.map(([x]) => x);
@@ -89,9 +93,7 @@ function presetPolygon(kind: 'rhombus' | 'l-shape' | 'octagon', current: Point[]
   const depth = Math.max(0.8, box.maxZ - box.minZ);
   const cx = (box.minX + box.maxX) / 2;
   const cz = (box.minZ + box.maxZ) / 2;
-  if (kind === 'rhombus') {
-    return [[cx, box.minZ], [box.maxX, cz], [cx, box.maxZ], [box.minX, cz]];
-  }
+  if (kind === 'rhombus') return [[cx, box.minZ], [box.maxX, cz], [cx, box.maxZ], [box.minX, cz]];
   if (kind === 'l-shape') {
     return [
       [box.minX, box.minZ], [box.maxX, box.minZ], [box.maxX, box.minZ + depth * 0.48],
@@ -125,11 +127,10 @@ export function RoomLayoutEditor({
   const [editMode, setEditMode] = useState<EditMode>('vertices');
   const [snapEnabled, setSnapEnabled] = useState(true);
   const [snapSize, setSnapSize] = useState(0.1);
+  const [zoom, setZoom] = useState(DEFAULT_ZOOM);
 
   useEffect(() => {
-    if (!scene.rooms.some((room) => room.id === selectedId)) {
-      setSelectedId(scene.rooms[0]?.id ?? '');
-    }
+    if (!scene.rooms.some((room) => room.id === selectedId)) setSelectedId(scene.rooms[0]?.id ?? '');
   }, [scene.rooms, selectedId]);
 
   const selected = scene.rooms.find((room) => room.id === selectedId) ?? null;
@@ -143,9 +144,7 @@ export function RoomLayoutEditor({
     [selectedPolygon],
   );
 
-  useEffect(() => {
-    setNameDraft(selected?.name ?? '');
-  }, [selected?.id, selected?.name]);
+  useEffect(() => { setNameDraft(selected?.name ?? ''); }, [selected?.id, selected?.name]);
 
   const snapPoint = (point: Point): Point => {
     if (!snapEnabled || snapSize <= 0) return [round(point[0]), round(point[1])];
@@ -219,8 +218,7 @@ export function RoomLayoutEditor({
         window.alert('A room must keep at least three points.');
         return;
       }
-      const polygon = selectedPolygon.filter((_point, pointIndex) => pointIndex !== index);
-      commitPolygon(selected.id, polygon);
+      commitPolygon(selected.id, selectedPolygon.filter((_point, pointIndex) => pointIndex !== index));
       return;
     }
     if (editMode !== 'vertices') return;
@@ -301,12 +299,8 @@ export function RoomLayoutEditor({
     const drag = dragRef.current;
     if (!drag) return;
     dragRef.current = null;
-    if (svgRef.current?.hasPointerCapture(event.pointerId)) {
-      svgRef.current.releasePointerCapture(event.pointerId);
-    }
-    if (draft?.roomId === drag.roomId) {
-      commitPolygon(drag.roomId, draft.polygon);
-    }
+    if (svgRef.current?.hasPointerCapture(event.pointerId)) svgRef.current.releasePointerCapture(event.pointerId);
+    if (draft?.roomId === drag.roomId) commitPolygon(drag.roomId, draft.polygon);
   };
 
   const deleteSelected = () => {
@@ -329,8 +323,27 @@ export function RoomLayoutEditor({
     setEditMode('vertices');
   };
 
-  const handleRadius = Math.max(scene.width_m, scene.depth_m) * 0.011;
-  const vertexRadius = Math.max(scene.width_m, scene.depth_m) * 0.009;
+  const setClampedZoom = (value: number) => setZoom(clamp(value, MIN_ZOOM, MAX_ZOOM));
+  const handleWheel = (event: React.WheelEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    const multiplier = event.deltaY < 0 ? 1.1 : 1 / 1.1;
+    setZoom((current) => clamp(current * multiplier, MIN_ZOOM, MAX_ZOOM));
+  };
+
+  const viewport = useMemo(() => {
+    const width = scene.width_m / zoom;
+    const height = scene.depth_m / zoom;
+    return {
+      x: (scene.width_m - width) / 2,
+      y: (scene.depth_m - height) / 2,
+      width,
+      height,
+      value: `${(scene.width_m - width) / 2} ${(scene.depth_m - height) / 2} ${width} ${height}`,
+    };
+  }, [scene.width_m, scene.depth_m, zoom]);
+
+  const handleRadius = Math.max(scene.width_m, scene.depth_m) * 0.011 / zoom;
+  const vertexRadius = Math.max(scene.width_m, scene.depth_m) * 0.009 / zoom;
   const activePoints = selectedPolygon?.map(([x, z]) => `${x},${z}`).join(' ') ?? '';
   const gridStep = Math.max(0.1, snapSize || 0.1);
 
@@ -339,7 +352,7 @@ export function RoomLayoutEditor({
       <div className="room-editor-toolbar">
         <div>
           <strong>Free-form room editor</strong>
-          <span>Move complete rooms, drag individual vertices, or insert points on any edge for rhombus, L-shape and irregular rooms.</span>
+          <span>Move rooms, drag vertices, insert edge points and zoom out to inspect the complete building footprint.</span>
         </div>
         <div className="room-editor-actions">
           <button disabled={busy} onClick={() => void onAddRoom()}><Plus size={16} /> Add room</button>
@@ -358,13 +371,20 @@ export function RoomLayoutEditor({
         <button disabled={!selected} onClick={() => applyPreset('octagon')}>Octagon</button>
         <label className="snap-control"><input type="checkbox" checked={snapEnabled} onChange={(event) => setSnapEnabled(event.target.checked)} /> Snap</label>
         <label className="snap-size">Grid <input type="number" min="0.02" max="2" step="0.05" value={snapSize} onChange={(event) => setSnapSize(Math.max(0.02, Number(event.target.value) || 0.1))} /> m</label>
+        <div className="plan-zoom-controls" aria-label="Floor plan zoom controls">
+          <button type="button" title="Zoom out" onClick={() => setClampedZoom(zoom / 1.2)}><ZoomOut size={15} /></button>
+          <input aria-label="Floor plan zoom" type="range" min={MIN_ZOOM} max={MAX_ZOOM} step="0.05" value={zoom} onChange={(event) => setClampedZoom(Number(event.target.value))} />
+          <button type="button" title="Zoom in" onClick={() => setClampedZoom(zoom * 1.2)}><ZoomIn size={15} /></button>
+          <button type="button" title="Fit complete plan" onClick={() => setZoom(DEFAULT_ZOOM)}><Maximize2 size={15} /></button>
+          <output>{Math.round(zoom * 100)}%</output>
+        </div>
       </div>
 
-      <div className="room-editor-stage" style={{ aspectRatio: `${scene.width_m} / ${scene.depth_m}` }}>
+      <div className="room-editor-stage" style={{ aspectRatio: `${scene.width_m} / ${scene.depth_m}` }} onWheel={handleWheel}>
         <svg
           ref={svgRef}
-          viewBox={`0 0 ${scene.width_m} ${scene.depth_m}`}
-          preserveAspectRatio="none"
+          viewBox={viewport.value}
+          preserveAspectRatio="xMidYMid meet"
           onPointerMove={movePointer}
           onPointerUp={finishPointer}
           onPointerCancel={finishPointer}
@@ -374,10 +394,9 @@ export function RoomLayoutEditor({
               <path d={`M ${gridStep} 0 L 0 0 0 ${gridStep}`} fill="none" stroke="rgba(91,151,112,.18)" strokeWidth="0.015" />
             </pattern>
           </defs>
+          <rect x={viewport.x} y={viewport.y} width={viewport.width} height={viewport.height} fill="#020704" />
           <rect width={scene.width_m} height={scene.depth_m} fill="#08140f" />
-          {referenceUrl ? (
-            <image href={referenceUrl} x="0" y="0" width={scene.width_m} height={scene.depth_m} preserveAspectRatio="none" opacity="0.72" />
-          ) : null}
+          {referenceUrl ? <image href={referenceUrl} x="0" y="0" width={scene.width_m} height={scene.depth_m} preserveAspectRatio="none" opacity="0.72" /> : null}
           <rect width={scene.width_m} height={scene.depth_m} fill="url(#room-grid)" pointerEvents="none" />
           {scene.rooms.map((room, index) => {
             const polygon = roomPoints(room, draft);
@@ -411,11 +430,7 @@ export function RoomLayoutEditor({
               })}
               {(editMode === 'vertices' || editMode === 'remove-point' || editMode === 'add-point') && selectedPolygon.map(([x, z], index) => (
                 <g key={`vertex-${index}`} className="vertex-control">
-                  <circle
-                    cx={x} cy={z} r={vertexRadius}
-                    vectorEffect="non-scaling-stroke"
-                    onPointerDown={(event) => beginVertex(event, index)}
-                  />
+                  <circle cx={x} cy={z} r={vertexRadius} vectorEffect="non-scaling-stroke" onPointerDown={(event) => beginVertex(event, index)} />
                   <text x={x} y={z - vertexRadius * 1.55} vectorEffect="non-scaling-stroke">{index + 1}</text>
                 </g>
               ))}
@@ -436,11 +451,7 @@ export function RoomLayoutEditor({
           ) : null}
         </svg>
         {scene.rooms.length === 0 ? (
-          <div className="empty-room-layout">
-            <Plus size={28} />
-            <strong>Add the first room</strong>
-            <span>Add a rectangle, then insert and drag points to trace any free-form boundary.</span>
-          </div>
+          <div className="empty-room-layout"><Plus size={28} /><strong>Add the first room</strong><span>Add a rectangle, then insert and drag points to trace any free-form boundary.</span></div>
         ) : null}
       </div>
 
