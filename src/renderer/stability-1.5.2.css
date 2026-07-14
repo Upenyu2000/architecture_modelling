@@ -1,0 +1,167 @@
+/* 1.5.2 stability and usability overrides */
+body {
+  min-width: 0;
+  overflow-x: auto;
+}
+
+.app-shell {
+  min-width: 1180px;
+}
+
+.workspace {
+  grid-template-columns: minmax(360px, 420px) minmax(720px, 1fr);
+  align-items: start;
+  min-width: 1180px;
+  isolation: isolate;
+}
+
+.left-column,
+.right-column {
+  min-width: 0;
+  width: 100%;
+}
+
+.left-column {
+  grid-column: 1;
+}
+
+.right-column {
+  grid-column: 2;
+  position: relative;
+  z-index: 0;
+  overflow: hidden;
+}
+
+.viewer-panel,
+.canvas-wrap,
+.three-view-wrap {
+  min-width: 0;
+  width: 100%;
+  max-width: 100%;
+}
+
+.viewer-panel {
+  position: relative;
+  overflow: hidden;
+}
+
+.viewer-header {
+  min-width: 0;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.viewer-actions {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.view-switch {
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.room-editor-modebar {
+  gap: 7px;
+}
+
+.plan-zoom-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-left: auto;
+  padding: 3px;
+  border: 1px solid #315441;
+  border-radius: 8px;
+  background: #06110b;
+}
+
+.plan-zoom-controls button {
+  min-width: 32px;
+  padding: 6px !important;
+}
+
+.plan-zoom-controls input[type="range"] {
+  width: 112px;
+  padding: 0;
+  accent-color: #67c98b;
+}
+
+.plan-zoom-controls output {
+  min-width: 44px;
+  color: #b9d7c3;
+  font-size: 10px;
+  text-align: right;
+}
+
+.room-editor-stage {
+  min-height: 500px;
+  max-height: none;
+  padding: 12px;
+  background: #020704;
+}
+
+.room-editor-stage svg {
+  min-height: 500px;
+  border: 1px solid rgba(80, 130, 101, .28);
+  border-radius: 8px;
+  background: #020704;
+}
+
+.walkthrough-settings {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  z-index: 6;
+  display: grid;
+  gap: 8px;
+  width: 230px;
+  padding: 11px 12px;
+  border: 1px solid rgba(76, 126, 98, .7);
+  border-radius: 11px;
+  background: rgba(5, 17, 12, .88);
+  color: #dcefe3;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, .28);
+  backdrop-filter: blur(10px);
+}
+
+.walkthrough-settings strong {
+  font-size: 12px;
+}
+
+.walkthrough-settings label {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 4px 8px;
+  align-items: center;
+  color: #9db8a7;
+  font-size: 10px;
+}
+
+.walkthrough-settings label input {
+  grid-column: 1 / -1;
+  width: 100%;
+  padding: 0;
+  accent-color: #67c98b;
+}
+
+.walkthrough-settings output {
+  color: #dcefe3;
+  font-variant-numeric: tabular-nums;
+}
+
+.walkthrough-settings small {
+  color: #789381;
+  line-height: 1.35;
+}
+
+@media (max-width: 1260px) {
+  .app-shell,
+  .workspace {
+    min-width: 1120px;
+  }
+
+  .workspace {
+    grid-template-columns: minmax(340px, 380px) minmax(700px, 1fr);
+  }
+}
