@@ -9,8 +9,6 @@ if (-not (Get-Command python -ErrorAction SilentlyContinue)) {
     throw "Python 3.11+ is required and must be available on PATH."
 }
 
-# A previous interrupted build can leave an incomplete virtual environment
-# directory behind. Recreate it unless its Python executable is present.
 if (-not (Test-Path $Python)) {
     if (Test-Path $Venv) {
         Write-Host "Removing incomplete backend build environment..."
@@ -40,14 +38,14 @@ try {
     if ($LASTEXITCODE -ne 0) { throw "Shared portal smoke test failed." }
     & $Python -m tests.smoke_exterior_space
     if ($LASTEXITCODE -ne 0) { throw "Exterior white-space smoke test failed." }
+    & $Python -m tests.smoke_plan_boundary
+    if ($LASTEXITCODE -ne 0) { throw "Image-derived plan-boundary smoke test failed." }
     & $Python -m tests.smoke_interiors
     if ($LASTEXITCODE -ne 0) { throw "Interior design smoke test failed." }
 } finally {
     Pop-Location
 }
 
-# Remove stale PyInstaller output so the desktop package cannot reuse an old
-# backend executable after source changes.
 Remove-Item -Recurse -Force (Join-Path $Backend "build") -ErrorAction SilentlyContinue
 Remove-Item -Recurse -Force (Join-Path $Backend "dist") -ErrorAction SilentlyContinue
 
@@ -71,6 +69,7 @@ try {
         --hidden-import app.services.openings `
         --hidden-import app.services.shared_portals `
         --hidden-import app.services.strict_geometry `
+        --hidden-import app.services.plan_boundary `
         --hidden-import app.services.opening_symbols `
         --hidden-import app.services.furniture_detection `
         --hidden-import app.services.rendering_v15 `
@@ -93,8 +92,6 @@ if (-not (Test-Path $BackendExe)) {
     throw "Backend build completed without producing $BackendExe"
 }
 
-# Launch the exact packaged executable and verify its health endpoint before
-# allowing electron-builder to include it in the Windows application.
 $TestPort = 18765
 $TestData = Join-Path $Backend ".backend-self-test"
 $StdOut = Join-Path $Backend "backend-self-test.stdout.log"
@@ -122,8 +119,8 @@ try {
             $Response = Invoke-WebRequest -UseBasicParsing -Uri "http://127.0.0.1:$TestPort/health" -TimeoutSec 2
             if ($Response.StatusCode -eq 200) {
                 $Payload = $Response.Content | ConvertFrom-Json
-                if ($Payload.version -ne "1.5.3") {
-                    throw "Packaged backend reported version $($Payload.version), expected 1.5.3."
+                if ($Payload.version -ne "1.5.4") {
+                    throw "Packaged backend reported version $($Payload.version), expected 1.5.4."
                 }
                 $Healthy = $true
                 break
@@ -150,5 +147,5 @@ if (-not $Healthy) {
 
 Remove-Item -Recurse -Force $TestData -ErrorAction SilentlyContinue
 Remove-Item -Force $StdOut, $StdErr -ErrorAction SilentlyContinue
-Write-Host "Packaged backend health check passed with version 1.5.3."
+Write-Host "Packaged backend health check passed with version 1.5.4."
 Write-Host "Backend built at backend\dist\dreamhome-ai.exe"

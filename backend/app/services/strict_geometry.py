@@ -13,6 +13,7 @@ from ..models import AnalyzeRequest, RoomCreateRequest, SceneManifest
 from .floorplan import analyze_floorplan as legacy_analyze_floorplan
 from .layout import add_room as legacy_add_room
 from .layout import update_room_geometry as legacy_update_room_geometry
+from .plan_boundary import detect_plan_boundary, filter_rooms_by_image_boundary
 
 
 EXTERIOR_WARNING = (
@@ -117,13 +118,15 @@ def filter_exterior_rooms(
 
 def analyze_floorplan_strict(project_id: str, image_path: Path, request: AnalyzeRequest) -> SceneManifest:
     scene = legacy_analyze_floorplan(project_id, image_path, request)
-    image = cv2.imread(str(image_path), cv2.IMREAD_GRAYSCALE)
+    image = cv2.imread(str(image_path), cv2.IMREAD_COLOR)
     if image is not None:
-        height, width = image.shape
+        boundary = detect_plan_boundary(image)
+        scene = filter_rooms_by_image_boundary(scene, boundary)
+        height, width = image.shape[:2]
         scene = filter_exterior_rooms(scene, width_px=width, height_px=height)
     else:
         scene = filter_exterior_rooms(scene)
-    scene.project_metadata.parser_version = "arch-ai-1.5.2"
+    scene.project_metadata.parser_version = "arch-ai-1.5.4"
     return scene
 
 

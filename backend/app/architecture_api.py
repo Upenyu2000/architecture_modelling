@@ -1,14 +1,15 @@
 from __future__ import annotations
 
 import math
+import zipfile
 from pathlib import Path
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 from .models import AnalyzeRequest, MaterialUpdateRequest, Opening, Project, SceneManifest
-from .storage import load_project, project_dir, save_project, write_json
+from .storage import load_project, project_dir, save_project, save_upload, write_json
 from .services.architecture import compile_architecture, update_materials
 from .services.architecture_export import production_architecture_payload
 from .services.furniture_detection import detect_furniture_symbols, merge_furniture_objects
@@ -16,7 +17,7 @@ from .services.opening_symbols import classify_opening_symbols
 from .services.openings import restore_manual_openings
 from .services.scene import apply_assets
 from .services.segmentation import refine_scene_with_model
-from .services.training_data import export_corrected_training_example
+from .services.training_data import export_corrected_training_example, import_training_seed_pack
 from .services.vector_refinement import add_diagonal_wall_candidates
 
 router = APIRouter(prefix="/api/v1")
@@ -117,6 +118,22 @@ def create_training_example(project_id: str, request: TrainingExampleRequest) ->
     try:
         return export_corrected_training_example(project, image_path)
     except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+
+
+@router.post("/projects/{project_id}/training-seed-pack")
+async def import_seed_pack(
+    project_id: str,
+    file: UploadFile = File(...),
+    confirmed_rights: bool = Form(False),
+) -> dict[str, object]:
+    _project(project_id)
+    if Path(file.filename or "").suffix.lower() != ".zip":
+        raise HTTPException(status_code=415, detail="Training seed pack must be a ZIP archive")
+    archive_path = await save_upload(project_id, file, "training-imports", "seed-pack-")
+    try:
+        return import_training_seed_pack(archive_path, confirmed_rights=confirmed_rights)
+    except (ValueError, zipfile.BadZipFile) as exc:
         raise HTTPException(status_code=422, detail=str(exc))
 
 
