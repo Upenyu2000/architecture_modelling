@@ -48,7 +48,7 @@ export function WorkspaceScrollGuard({ children }: WorkspaceScrollGuardProps) {
     };
 
     document.addEventListener('wheel', handleWheel, { capture: true, passive: false });
-    document.title = 'Dream Home Visualizer 1.5.7';
+    document.title = 'Dream Home Visualizer 1.5.6';
 
     return () => {
       document.removeEventListener('wheel', handleWheel, true);
