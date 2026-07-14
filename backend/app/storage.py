@@ -29,6 +29,66 @@ def save_slots_dir(project_id: str) -> Path:
     return path
 
 
+def _existing_path(*candidates: Path) -> Path | None:
+    return next((candidate for candidate in candidates if candidate.exists()), None)
+
+
+def _file_url(project_id: str, path: Path) -> str | None:
+    root = project_dir(project_id).resolve()
+    try:
+        relative = path.resolve().relative_to(root).as_posix()
+    except (OSError, ValueError):
+        return None
+    return f"/api/v1/projects/{project_id}/files/{relative}"
+
+
+def normalise_project_urls(project: Project) -> Project:
+    """Repair URLs after upgrades and save-slot restores.
+
+    All browser-visible URLs are derived from the active project directory rather
+    than persisted as absolute machine-specific paths. This keeps floor-plan
+    underlays and uploaded assets valid after loading a saved build.
+    """
+    root = project_dir(project.id)
+    preview = root / "working" / "floorplan.png"
+
+    if project.floorplan:
+        source = _existing_path(
+            Path(project.floorplan.path),
+            root / "uploads" / "floorplans" / project.floorplan.filename,
+            root / "uploads" / project.floorplan.filename,
+        )
+        if source:
+            project.floorplan.path = str(source)
+        project.floorplan.preview_url = f"/api/v1/projects/{project.id}/floorplan-preview"
+        if project.scene:
+            project.scene.reference_image_url = project.floorplan.preview_url
+            project.scene.reference_image_path = str(preview)
+
+    if project.building_model:
+        source = _existing_path(
+            Path(project.building_model.path),
+            root / "uploads" / "building_models" / project.building_model.filename,
+            root / "uploads" / project.building_model.filename,
+        )
+        if source:
+            project.building_model.path = str(source)
+            project.building_model.url = _file_url(project.id, source) or project.building_model.url
+
+    for asset in project.assets.values():
+        source = _existing_path(Path(asset.path), root / "assets" / asset.category / asset.filename)
+        if source:
+            asset.path = str(source)
+            asset.url = _file_url(project.id, source) or asset.url
+        if asset.mesh_path:
+            mesh = _existing_path(Path(asset.mesh_path), root / "assets" / asset.category / Path(asset.mesh_path).name)
+            if mesh:
+                asset.mesh_path = str(mesh)
+                asset.mesh_url = _file_url(project.id, mesh)
+
+    return project
+
+
 def create_project(name: str) -> Project:
     ensure_directories()
     project = Project(id=str(uuid.uuid4()), name=name.strip() or "My Dream Home")
@@ -44,10 +104,12 @@ def load_project(project_id: str) -> Project:
     path = project_file(project_id)
     if not path.exists():
         raise FileNotFoundError(project_id)
-    return Project.model_validate_json(path.read_text(encoding="utf-8"))
+    project = Project.model_validate_json(path.read_text(encoding="utf-8"))
+    return normalise_project_urls(project)
 
 
 def save_project(project: Project) -> Project:
+    project = normalise_project_urls(project)
     project.updated_at = utc_now()
     path = project_file(project.id)
     path.parent.mkdir(parents=True, exist_ok=True)
