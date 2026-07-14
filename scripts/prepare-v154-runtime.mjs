@@ -8,6 +8,7 @@ await import('./generate-v154-room-editor.mjs');
 await import('./prepare-v153-viewport.mjs');
 await import('./generate-v154-scene-preview.mjs');
 await import('./patch-v156-stability.mjs');
+await import('./patch-v156-interior.mjs');
 
 const appPath = path.join(root, 'src', 'renderer', 'App.tsx');
 let app = await readFile(appPath, 'utf8');
