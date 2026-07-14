@@ -15,7 +15,7 @@ from .services.strict_geometry import (
 )
 
 
-APP_VERSION = "1.5.4"
+APP_VERSION = "1.5.5"
 app = main_module.app
 app.version = APP_VERSION
 main_module.APP_VERSION = APP_VERSION
