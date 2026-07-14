@@ -7,10 +7,22 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 await import('./generate-v154-room-editor.mjs');
 await import('./prepare-v153-viewport.mjs');
 await import('./generate-v154-scene-preview.mjs');
+
+// Git may check out TypeScript files with CRLF on Windows. Normalise the two
+// patch inputs before applying exact, fail-fast generated-runtime transforms.
+for (const relativePath of [
+  path.join('src', 'renderer', 'App.tsx'),
+  path.join('src', 'renderer', 'components', 'OpeningEditor.tsx'),
+]) {
+  const target = path.join(root, relativePath);
+  const content = await readFile(target, 'utf8');
+  await writeFile(target, content.replace(/\r\n/g, '\n'), 'utf8');
+}
+
 await import('./generate-v160-runtime.mjs');
 
 const appPath = path.join(root, 'src', 'renderer', 'App.tsx');
-let app = await readFile(appPath, 'utf8');
+let app = (await readFile(appPath, 'utf8')).replace(/\r\n/g, '\n');
 app = app.replace(
   /from '\.\/components\/ScenePreview(?:\.v154|\.v160)?';/,
   "from './components/ScenePreview.v160';",
