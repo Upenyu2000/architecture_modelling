@@ -4,10 +4,12 @@ const app = readFileSync(new URL('../src/renderer/App.tsx', import.meta.url), 'u
 const main = readFileSync(new URL('../src/renderer/main.tsx', import.meta.url), 'utf8');
 const scene = readFileSync(new URL('../src/renderer/components/ScenePreview.v154.tsx', import.meta.url), 'utf8');
 const editor = readFileSync(new URL('../src/renderer/components/RoomLayoutEditor.v154.tsx', import.meta.url), 'utf8');
+const interior = readFileSync(new URL('../src/renderer/components/InteriorDesignEditor.v157.tsx', import.meta.url), 'utf8');
 const scrollGuard = readFileSync(new URL('../src/renderer/components/WorkspaceScrollGuard.tsx', import.meta.url), 'utf8');
 const runtimeStyles = readFileSync(new URL('../src/renderer/runtime-1.5.4.css', import.meta.url), 'utf8');
 const standaloneStyles = readFileSync(new URL('../src/renderer/standalone-layout-1.5.5.css', import.meta.url), 'utf8');
 const fixedWorkspaceStyles = readFileSync(new URL('../src/renderer/fixed-workspace-1.5.6.css', import.meta.url), 'utf8');
+const interiorStyles = readFileSync(new URL('../src/renderer/interior.css', import.meta.url), 'utf8');
 
 function assert(condition, message) {
   if (!condition) throw new Error(message);
@@ -17,6 +19,7 @@ assert(app.includes("./components/ScenePreview.v154"), 'The application must imp
 assert(main.includes("./standalone-layout-1.5.5.css"), 'The standalone layout guard must load after earlier viewport styles.');
 assert(main.includes("./fixed-workspace-1.5.6.css"), 'The fixed 1.5.6 workspace styles must load last.');
 assert(main.includes('WorkspaceScrollGuard'), 'The right-column wheel routing guard is not active.');
+assert(scene.includes("./InteriorDesignEditor.v157"), 'The generated viewport must use the stable 1.5.7 interior editor.');
 assert(!/<PerspectiveCamera[^>]*\bposition=/.test(scene), 'Walkthrough camera must not receive a spawn position prop.');
 assert(scene.includes('playerPositionRef'), 'Walkthrough must persist the live player position.');
 assert(scene.includes('WalkthroughCamera'), 'Dynamic FOV camera component is missing.');
@@ -33,6 +36,20 @@ assert(editor.includes('room-pan-controls'), 'Edit Rooms directional pan buttons
 assert(editor.includes('panDragRef'), 'Edit Rooms mouse panning is missing.');
 assert(editor.includes('onWheel={handleWheel}'), 'Mouse-wheel plan zoom is missing.');
 assert(editor.includes('viewBox={viewport.value}'), 'Pannable zoomable SVG viewport is missing.');
+assert(interior.includes("type ToolMode = 'pan' | 'add' | 'move-scale' | 'edit'"), 'Interior design tool modes are missing.');
+assert(interior.includes('Pan view'), 'Interior design Pan view button is missing.');
+assert(interior.includes('Move / scale'), 'Interior design Move / scale button is missing.');
+assert(interior.includes('ZoomOut'), 'Interior design zoom-out control is missing.');
+assert(interior.includes('Edit furniture'), 'Interior design edit-furniture mode is missing.');
+assert(interior.includes('fitFullPlan'), 'Interior design full-plan fitting is missing.');
+assert(interior.includes("kind: 'move'"), 'Canvas furniture movement is missing.');
+assert(interior.includes("kind: 'scale'"), 'Canvas furniture scaling is missing.');
+assert(interior.includes("kind: 'rotate'"), 'Canvas furniture rotation is missing.');
+assert(interior.includes('onDeleteFurniture'), 'Furniture removal is missing.');
+assert(interior.includes('scene.walls.map'), 'Interior canvas must render the complete floor-plan wall network.');
+assert(interiorStyles.includes('.interior-canvas-toolbar'), 'Interior canvas toolbar styling is missing.');
+assert(interiorStyles.includes('.interior-scale-handle'), 'Furniture scale handle styling is missing.');
+assert(interiorStyles.includes('.interior-rotation-handle'), 'Furniture rotation handle styling is missing.');
 assert(runtimeStyles.includes('grid-template-columns: clamp(330px, 27vw, 420px) minmax(0, 1fr)'), 'Adaptive base workspace is missing.');
 assert(runtimeStyles.includes('.walkthrough-active canvas'), 'First-person canvas input containment styles are missing.');
 assert(runtimeStyles.includes('.room-pan-controls'), 'Edit Rooms pan styling is missing.');
@@ -52,4 +69,4 @@ assert(scrollGuard.includes("document.querySelector<HTMLElement>('.right-column'
 assert(scrollGuard.includes('target.closest(CANVAS_INTERACTION_SELECTOR)'), 'Canvas interaction must bypass normal scroll redirection.');
 assert(scrollGuard.includes('leftColumn.scrollBy'), 'Non-canvas right-column wheel input must scroll the left rail.');
 
-console.log('UI stability smoke test passed: fixed right workspace, independently scrolling left rail, canvas gesture isolation, protected gutter, room panning, input lock, PBR and character assets');
+console.log('UI stability smoke test passed: fixed right workspace, left-only scrolling, full-plan interior panning/zooming, move/scale/rotate/remove furniture, room panning, input lock, PBR and character assets');
