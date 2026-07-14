@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { Boxes, BrainCircuit, Database, Download, Palette, RefreshCw, ShieldCheck } from 'lucide-react';
+import { ChangeEvent, useEffect, useState } from 'react';
+import { Boxes, BrainCircuit, Database, Download, PackageOpen, Palette, RefreshCw, ShieldCheck } from 'lucide-react';
 import { api } from '../lib/api';
 import type { MaterialUpdate, Project, SceneManifest } from '../types';
 
@@ -28,6 +28,15 @@ const presets: Record<string, Omit<MaterialUpdate, 'cutaway_height_m'>> = {
     exterior_color: '#81756D',
     accent_color: '#1F4772',
     roughness: 0.42,
+  },
+  'Wenge Chevron / Dark Bronze': {
+    palette_name: 'Wenge Chevron / Dark Bronze',
+    floor_type: 'wenge_chevron',
+    floor_color: '#342018',
+    wall_color: '#E9E3D9',
+    exterior_color: '#59483F',
+    accent_color: '#8B6249',
+    roughness: 0.38,
   },
   'Minimal White / Black Metal': {
     palette_name: 'Minimal White / Black Metal',
@@ -99,6 +108,28 @@ export function ArchitecturePanel({ project, busy, onCompile, onApply }: Props) 
     }
   };
 
+  const importSeedPack = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file || !project) return;
+    const confirmed = window.confirm(
+      'Import this ZIP into the local training and renderer-test workspace? Continue only when you own every included plan, material and 3D asset or have permission to use them.',
+    );
+    if (!confirmed) return;
+    setTrainingBusy(true);
+    setTrainingMessage('');
+    try {
+      const imported = await api.uploadTrainingSeedPack(project.id, file);
+      setTrainingMessage(
+        `Imported ${imported.training_examples} boundary example(s), ${imported.material_assets} material(s) and ${imported.model_assets} 3D test asset(s) into ${imported.workspace}`,
+      );
+    } catch (error) {
+      setTrainingMessage(error instanceof Error ? error.message : String(error));
+    } finally {
+      setTrainingBusy(false);
+    }
+  };
+
   const metadata = scene?.project_metadata;
 
   return (
@@ -108,7 +139,7 @@ export function ArchitecturePanel({ project, busy, onCompile, onApply }: Props) 
         <BrainCircuit size={22} />
       </div>
       <p className="panel-copy">
-        Compile free-form room polygons, walls, dimensions, openings, procedural fixtures, collision geometry and synchronized camera data into one exportable scene.
+        Compile free-form room polygons, image-derived building boundaries, openings, procedural interiors, collision geometry and synchronized camera data into one exportable scene.
       </p>
 
       {metadata ? (
@@ -130,7 +161,7 @@ export function ArchitecturePanel({ project, busy, onCompile, onApply }: Props) 
       </button>
 
       <div className="architecture-divider" />
-      <div className="palette-heading"><Palette size={17} /><strong>Real-world material mapper</strong></div>
+      <div className="palette-heading"><Palette size={17} /><strong>Real-world PBR material mapper</strong></div>
       <div className="two-inputs material-grid">
         <label>Design palette
           <select value={settings.palette_name} onChange={(event) => choosePreset(event.target.value)}>
@@ -140,6 +171,7 @@ export function ArchitecturePanel({ project, busy, onCompile, onApply }: Props) 
         <label>Floor material
           <select value={settings.floor_type} onChange={(event) => update('floor_type', event.target.value)}>
             <option value="hardwood">Hardwood</option>
+            <option value="wenge_chevron">Wenge chevron</option>
             <option value="tile">Porcelain tile</option>
             <option value="carpet">Carpet</option>
             <option value="stone">Natural stone</option>
@@ -160,13 +192,18 @@ export function ArchitecturePanel({ project, busy, onCompile, onApply }: Props) 
       <button className="secondary full-width" disabled={busy || !scene} onClick={() => void onApply(settings)}>
         <Boxes size={17} /> Apply palette and cutaway
       </button>
+      <small className="manual-note">Upload the supplied Wenge texture under Inputs → Flooring → Main floor to use the exact image map with this preset.</small>
 
       {scene ? (
         <div className="training-export-card">
-          <div><Database size={18} /><span><strong>Continuous learning</strong><small>After correcting every room vertex, export this plan as a supervised local training example.</small></span></div>
+          <div><Database size={18} /><span><strong>Continuous local learning</strong><small>Correct room vertices first, then export a supervised example or import a rights-confirmed seed ZIP containing plans, masks, materials and 3D validation assets.</small></span></div>
           <button className="secondary" disabled={busy || trainingBusy || !project?.floorplan || scene.rooms.length === 0} onClick={() => void addTrainingExample()}>
-            <Database size={15} /> {trainingBusy ? 'Exporting…' : 'Add corrected plan to training set'}
+            <Database size={15} /> {trainingBusy ? 'Working…' : 'Add corrected plan to training set'}
           </button>
+          <label className="seed-pack-upload">
+            <PackageOpen size={15} /> Import training/test seed pack
+            <input disabled={busy || trainingBusy} type="file" accept="application/zip,.zip" onChange={importSeedPack} />
+          </label>
           {trainingMessage ? <small className="training-export-message">{trainingMessage}</small> : null}
         </div>
       ) : null}
