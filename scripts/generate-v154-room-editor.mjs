@@ -5,7 +5,7 @@ import path from 'node:path';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const sourcePath = path.join(root, 'src', 'renderer', 'components', 'RoomLayoutEditor.tsx');
 const generatedPath = path.join(root, 'src', 'renderer', 'components', 'RoomLayoutEditor.v154.tsx');
-let source = await readFile(sourcePath, 'utf8');
+let source = (await readFile(sourcePath, 'utf8')).replace(/\r\n/g, '\n');
 
 function replaceOne(pattern, replacement, label) {
   if (!pattern.test(source)) throw new Error(`1.5.4 room-editor patch could not find: ${label}`);
