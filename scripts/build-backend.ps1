@@ -42,6 +42,8 @@ try {
     if ($LASTEXITCODE -ne 0) { throw "Image-derived plan-boundary smoke test failed." }
     & $Python -m tests.smoke_interiors
     if ($LASTEXITCODE -ne 0) { throw "Interior design smoke test failed." }
+    & $Python -m tests.smoke_stability
+    if ($LASTEXITCODE -ne 0) { throw "Floor-plan and continuous-floor stability smoke test failed." }
 } finally {
     Pop-Location
 }
@@ -62,10 +64,12 @@ try {
         --add-data "app\blender;app\blender" `
         --hidden-import app.main `
         --hidden-import app.asgi `
+        --hidden-import app.stability_api `
         --hidden-import app.architecture_api `
         --hidden-import app.opening_api `
         --hidden-import app.interior_api `
         --hidden-import app.services.architecture `
+        --hidden-import app.services.floor_mask `
         --hidden-import app.services.openings `
         --hidden-import app.services.shared_portals `
         --hidden-import app.services.strict_geometry `
