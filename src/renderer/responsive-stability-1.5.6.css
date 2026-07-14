@@ -1,0 +1,228 @@
+/* 1.5.6 responsive stability hotfix: preserve all tools at every window size. */
+
+.viewer-panel,
+.canvas-wrap,
+.three-view-wrap,
+.editor-canvas,
+.interior-editor,
+.interior-stage,
+.structure-preview {
+  min-width: 0;
+  min-height: 0;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+.viewer-header {
+  display: grid;
+  grid-template-columns: minmax(210px, auto) minmax(0, 1fr);
+  align-items: start;
+  gap: clamp(12px, 2vw, 28px);
+}
+
+.viewer-actions,
+.view-switch {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.viewer-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.view-switch {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scrollbar-width: thin;
+}
+
+.view-switch button,
+.interior-canvas-toolbar button {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+.canvas-wrap {
+  position: relative;
+  width: 100%;
+  aspect-ratio: clamp(1.15, 16 / 10, 1.8);
+  height: auto !important;
+  max-height: calc(100dvh - 250px);
+  overflow: hidden;
+  contain: layout paint style;
+}
+
+.canvas-wrap.editor-canvas {
+  aspect-ratio: auto;
+  min-height: clamp(520px, 68dvh, 920px);
+  max-height: calc(100dvh - 210px);
+}
+
+.three-view-wrap,
+.three-view-wrap > div,
+.three-view-wrap canvas {
+  width: 100% !important;
+  height: 100% !important;
+  max-width: 100% !important;
+  max-height: 100% !important;
+}
+
+.interior-editor {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) clamp(270px, 24vw, 380px);
+  height: 100%;
+  overflow: hidden;
+}
+
+.interior-stage {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+.interior-stage > svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  min-height: 480px;
+  touch-action: none;
+}
+
+.interior-controls {
+  min-width: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+
+.interior-canvas-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 8px;
+  max-width: calc(100% - 20px);
+}
+
+.interior-tool-group,
+.interior-zoom-group {
+  display: flex;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.structure-preview {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: #f5f7f5;
+}
+
+.layered-structure-preview > img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.layered-structure-preview .structure-reference {
+  z-index: 1;
+  opacity: 0.9;
+}
+
+.layered-structure-preview .structure-overlay {
+  z-index: 2;
+  opacity: 0.72;
+  mix-blend-mode: multiply;
+}
+
+.layered-structure-preview > div {
+  position: absolute;
+  z-index: 3;
+  left: 12px;
+  bottom: 12px;
+}
+
+.output-panel,
+.render-controls {
+  min-width: 0;
+}
+
+.render-controls {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+@media (max-width: 1540px) {
+  .viewer-header {
+    grid-template-columns: 1fr;
+  }
+
+  .viewer-actions,
+  .view-switch {
+    justify-content: flex-start;
+  }
+
+  .canvas-wrap {
+    max-height: calc(100dvh - 300px);
+  }
+}
+
+@media (max-width: 1180px) {
+  .interior-editor {
+    grid-template-columns: 1fr;
+    grid-template-rows: minmax(520px, 66dvh) auto;
+    overflow-y: auto;
+  }
+
+  .interior-controls {
+    max-height: none;
+    overflow: visible;
+  }
+
+  .canvas-wrap,
+  .canvas-wrap.editor-canvas {
+    min-height: 520px;
+    max-height: none;
+  }
+}
+
+@media (max-width: 760px) {
+  .viewer-header,
+  .viewer-panel,
+  .output-panel {
+    padding-left: 12px;
+    padding-right: 12px;
+  }
+
+  .view-switch {
+    flex-wrap: nowrap;
+    justify-content: flex-start;
+    padding-bottom: 6px;
+  }
+
+  .interior-canvas-toolbar {
+    position: relative;
+    inset: auto;
+    max-width: 100%;
+    border-radius: 0;
+  }
+
+  .interior-stage > svg {
+    min-height: 460px;
+  }
+
+  .render-controls {
+    justify-content: flex-start;
+  }
+}
