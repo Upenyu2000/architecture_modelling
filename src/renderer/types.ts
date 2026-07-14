@@ -7,7 +7,8 @@ export type AssetCategory =
   | 'bedroom'
   | 'dining_room'
   | 'office'
-  | 'outdoor';
+  | 'outdoor'
+  | 'characters';
 export type WallDetectionMode = 'clean' | 'balanced' | 'detailed';
 export type PlanType = 'auto' | 'blueprint' | 'rendered';
 export type UpAxis = 'y' | 'z';
@@ -266,7 +267,6 @@ export interface SaveSlot {
   status: string;
   floorplan_filename?: string | null;
   building_model_filename?: string | null;
-  preview_url?: string | null;
   asset_count: number;
   has_scene: boolean;
   has_drawings: boolean;
@@ -276,12 +276,9 @@ export interface Job {
   id: string;
   project_id: string;
   kind: string;
-  status: 'queued' | 'running' | 'completed' | 'failed';
+  status: string;
   progress: number;
   message: string;
-  output_url?: string | null;
   output_path?: string | null;
-  metadata?: Record<string, unknown>;
-  created_at: string;
-  updated_at: string;
+  output_url?: string | null;
 }
