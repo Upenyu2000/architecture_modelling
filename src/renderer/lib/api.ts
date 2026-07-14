@@ -140,6 +140,19 @@ export const api = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ confirmed_rights: true }),
     }),
+  uploadTrainingSeedPack: async (id: string, file: File) => {
+    const body = new FormData();
+    body.append('file', file);
+    body.append('confirmed_rights', 'true');
+    return request<{
+      pack_id: string;
+      workspace: string;
+      pack_root: string;
+      training_examples: number;
+      model_assets: number;
+      material_assets: number;
+    }>(`/api/v1/projects/${id}/training-seed-pack`, { method: 'POST', body });
+  },
   updateMaterials: (id: string, materials: MaterialUpdate) =>
     request<SceneManifest>(`/api/v1/projects/${id}/materials`, {
       method: 'PUT',
