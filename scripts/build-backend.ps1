@@ -119,8 +119,8 @@ try {
             $Response = Invoke-WebRequest -UseBasicParsing -Uri "http://127.0.0.1:$TestPort/health" -TimeoutSec 2
             if ($Response.StatusCode -eq 200) {
                 $Payload = $Response.Content | ConvertFrom-Json
-                if ($Payload.version -ne "1.5.7") {
-                    throw "Packaged backend reported version $($Payload.version), expected 1.5.7."
+                if ($Payload.version -ne "1.5.6") {
+                    throw "Packaged backend reported version $($Payload.version), expected 1.5.6."
                 }
                 $Healthy = $true
                 break
@@ -147,5 +147,5 @@ if (-not $Healthy) {
 
 Remove-Item -Recurse -Force $TestData -ErrorAction SilentlyContinue
 Remove-Item -Force $StdOut, $StdErr -ErrorAction SilentlyContinue
-Write-Host "Packaged backend health check passed with version 1.5.7."
+Write-Host "Packaged backend health check passed with version 1.5.6."
 Write-Host "Backend built at backend\dist\dreamhome-ai.exe"
