@@ -1,8 +1,8 @@
 {
   "name": "dream-home-visualizer",
-  "version": "1.5.1",
+  "version": "1.5.2",
   "private": true,
-  "description": "Standalone Windows free-form architectural parser, procedural interior designer, PBR cutaway renderer and shared-portal walkthrough compiler",
+  "description": "Standalone Windows free-form architectural parser, procedural interior designer, PBR cutaway renderer and stable shared-portal walkthrough compiler",
   "author": "Upenyu Hlangabeza",
   "main": "dist-electron/main.cjs",
   "type": "module",
@@ -11,9 +11,10 @@
     "dev:renderer": "vite --host 127.0.0.1",
     "dev:main": "tsup src/main/main.ts src/main/preload.ts --format cjs --platform node --external electron --out-dir dist-electron --watch --sourcemap",
     "dev:electron": "wait-on tcp:5173 file:dist-electron/main.cjs && cross-env VITE_DEV_SERVER_URL=http://127.0.0.1:5173 electron .",
+    "test:ui-stability": "node scripts/smoke-ui-stability.mjs",
     "build:renderer": "vite build",
     "build:main": "tsup src/main/main.ts src/main/preload.ts --format cjs --platform node --external electron --out-dir dist-electron --sourcemap && node scripts/verify-electron-bundle.mjs",
-    "build": "npm run build:renderer && npm run build:main",
+    "build": "npm run test:ui-stability && npm run build:renderer && npm run build:main",
     "build:backend": "powershell -ExecutionPolicy Bypass -File scripts/build-backend.ps1",
     "dist:windows": "npm run build:backend && npm run build && electron-builder --win nsis",
     "typecheck": "tsc --noEmit"
