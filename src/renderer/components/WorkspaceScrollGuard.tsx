@@ -8,7 +8,8 @@ const CANVAS_INTERACTION_SELECTOR = [
   '.room-editor-stage',
   '.room-editor-canvas',
   '.opening-editor-stage',
-  '.interior-editor-stage',
+  '.interior-editor',
+  '.interior-stage',
   '.detection-view',
 ].join(',');
 
@@ -47,7 +48,7 @@ export function WorkspaceScrollGuard({ children }: WorkspaceScrollGuardProps) {
     };
 
     document.addEventListener('wheel', handleWheel, { capture: true, passive: false });
-    document.title = 'Dream Home Visualizer 1.5.6';
+    document.title = 'Dream Home Visualizer 1.5.7';
 
     return () => {
       document.removeEventListener('wheel', handleWheel, true);
