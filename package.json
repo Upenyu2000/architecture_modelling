@@ -1,23 +1,27 @@
 {
   "name": "dream-home-visualizer",
-  "version": "1.5.2",
+  "version": "1.5.3",
   "private": true,
-  "description": "Standalone Windows free-form architectural parser, procedural interior designer, PBR cutaway renderer and stable shared-portal walkthrough compiler",
+  "description": "Standalone Windows free-form architectural parser, procedural interior designer, PBR cutaway renderer and spacious panning walkthrough compiler",
   "author": "Upenyu Hlangabeza",
   "main": "dist-electron/main.cjs",
   "type": "module",
   "scripts": {
+    "prepare:viewport": "node scripts/generate-v153-scene-preview.mjs",
+    "predev": "npm run prepare:viewport",
     "dev": "concurrently -k \"npm:dev:renderer\" \"npm:dev:main\" \"npm:dev:electron\"",
     "dev:renderer": "vite --host 127.0.0.1",
     "dev:main": "tsup src/main/main.ts src/main/preload.ts --format cjs --platform node --external electron --out-dir dist-electron --watch --sourcemap",
     "dev:electron": "wait-on tcp:5173 file:dist-electron/main.cjs && cross-env VITE_DEV_SERVER_URL=http://127.0.0.1:5173 electron .",
     "test:ui-stability": "node scripts/smoke-ui-stability.mjs",
+    "pretypecheck": "npm run prepare:viewport",
+    "typecheck": "tsc --noEmit",
+    "prebuild": "npm run prepare:viewport",
     "build:renderer": "vite build",
     "build:main": "tsup src/main/main.ts src/main/preload.ts --format cjs --platform node --external electron --out-dir dist-electron --sourcemap && node scripts/verify-electron-bundle.mjs",
     "build": "npm run test:ui-stability && npm run build:renderer && npm run build:main",
     "build:backend": "powershell -ExecutionPolicy Bypass -File scripts/build-backend.ps1",
-    "dist:windows": "npm run build:backend && npm run build && electron-builder --win nsis",
-    "typecheck": "tsc --noEmit"
+    "dist:windows": "npm run build:backend && npm run build && electron-builder --win nsis"
   },
   "dependencies": {
     "@react-three/drei": "^10.4.0",
