@@ -48,7 +48,7 @@
   content: "";
   position: absolute;
   inset-block: 12px;
-  right: calc((var(--workspace-column-gap) * -0.5) - 1px);
+  right: 0;
   width: 1px;
   background: linear-gradient(
     180deg,
