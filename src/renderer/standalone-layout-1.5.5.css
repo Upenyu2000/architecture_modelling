@@ -1,0 +1,185 @@
+/* 1.5.5 standalone control rail and protected rendering workspace */
+:root {
+  --workspace-edge-padding: clamp(22px, 2.8vw, 48px);
+  --workspace-column-gap: clamp(34px, 3.6vw, 64px);
+  --control-rail-width: clamp(350px, 28vw, 440px);
+  --control-rail-padding: clamp(16px, 1.5vw, 22px);
+}
+
+.app-shell {
+  isolation: isolate;
+  overflow-x: clip !important;
+}
+
+.workspace {
+  grid-template-columns: var(--control-rail-width) minmax(0, 1fr) !important;
+  column-gap: var(--workspace-column-gap) !important;
+  row-gap: 30px !important;
+  padding: 24px var(--workspace-edge-padding) 52px !important;
+  max-width: 100% !important;
+  overflow: clip !important;
+  isolation: isolate;
+}
+
+/* The complete input stack is one opaque, independent rail. Rendering can no
+   longer appear through the spaces between individual panels. */
+.left-column {
+  grid-column: 1 !important;
+  align-self: start;
+  display: grid !important;
+  gap: 18px !important;
+  min-inline-size: 0 !important;
+  width: 100% !important;
+  padding: var(--control-rail-padding) !important;
+  border: 1px solid rgba(69, 116, 88, 0.72);
+  border-radius: 24px;
+  background:
+    linear-gradient(180deg, rgba(8, 25, 17, 0.99), rgba(4, 15, 10, 0.99));
+  box-shadow:
+    0 26px 68px rgba(0, 0, 0, 0.38),
+    0 0 0 1px rgba(121, 190, 148, 0.04) inset;
+  overflow: clip !important;
+  isolation: isolate;
+  contain: layout paint style;
+  z-index: 3 !important;
+}
+
+.left-column::after {
+  content: "";
+  position: absolute;
+  inset-block: 12px;
+  right: calc((var(--workspace-column-gap) * -0.5) - 1px);
+  width: 1px;
+  background: linear-gradient(
+    180deg,
+    transparent,
+    rgba(82, 139, 105, 0.42) 8%,
+    rgba(82, 139, 105, 0.42) 92%,
+    transparent
+  );
+  pointer-events: none;
+}
+
+.left-column > * {
+  position: relative;
+  z-index: 1;
+  min-inline-size: 0 !important;
+  max-inline-size: 100% !important;
+}
+
+.left-column .panel,
+.left-column .settings-panel {
+  width: 100% !important;
+  min-width: 0 !important;
+  max-width: 100% !important;
+  margin: 0 !important;
+  overflow: hidden;
+}
+
+.right-column {
+  grid-column: 2 !important;
+  align-self: start;
+  min-inline-size: 0 !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  overflow: clip !important;
+  isolation: isolate;
+  contain: layout paint style;
+  z-index: 1 !important;
+}
+
+.right-column > * {
+  min-inline-size: 0 !important;
+  width: 100% !important;
+  max-width: 100% !important;
+}
+
+.viewer-panel,
+.output-panel,
+.job-panel,
+.canvas-wrap,
+.three-view-wrap {
+  isolation: isolate;
+  contain: layout paint style;
+  overflow: clip !important;
+}
+
+.canvas-wrap canvas,
+.three-view-wrap canvas,
+.canvas-wrap > div,
+.three-view-wrap > div {
+  display: block;
+  min-width: 0 !important;
+  max-width: 100% !important;
+}
+
+/* Keep long labels, filenames and buttons inside the standalone rail. */
+.left-column .panel-heading,
+.left-column .save-row,
+.left-column .slot-card,
+.left-column .training-export-card,
+.left-column .architecture-actions {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.left-column strong,
+.left-column span,
+.left-column small,
+.left-column p,
+.left-column label,
+.left-column button,
+.left-column input,
+.left-column select {
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 1280px) {
+  :root {
+    --workspace-edge-padding: 20px;
+    --workspace-column-gap: 34px;
+    --control-rail-width: clamp(330px, 30vw, 390px);
+  }
+
+  .workspace {
+    padding-top: 20px !important;
+  }
+}
+
+/* Stack before the viewport becomes narrow enough to intrude into the rail. */
+@media (max-width: 1060px) {
+  .workspace {
+    grid-template-columns: minmax(0, 1fr) !important;
+    row-gap: 34px !important;
+    padding-inline: clamp(16px, 3vw, 28px) !important;
+  }
+
+  .left-column,
+  .right-column {
+    grid-column: 1 !important;
+    width: 100% !important;
+  }
+
+  .left-column::after {
+    display: none;
+  }
+}
+
+@media (max-width: 620px) {
+  .workspace {
+    padding: 14px 12px 32px !important;
+  }
+
+  .left-column {
+    padding: 12px !important;
+    border-radius: 18px;
+  }
+
+  .left-column .asset-grid,
+  .left-column .two-inputs,
+  .left-column .material-grid,
+  .left-column .save-row,
+  .left-column .slot-card {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+}
