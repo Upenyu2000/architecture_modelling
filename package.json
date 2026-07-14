@@ -7,7 +7,7 @@
   "main": "dist-electron/main.cjs",
   "type": "module",
   "scripts": {
-    "prepare:viewport": "node scripts/generate-v153-scene-preview.mjs",
+    "prepare:viewport": "node scripts/prepare-v153-viewport.mjs",
     "predev": "npm run prepare:viewport",
     "dev": "concurrently -k \"npm:dev:renderer\" \"npm:dev:main\" \"npm:dev:electron\"",
     "dev:renderer": "vite --host 127.0.0.1",
