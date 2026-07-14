@@ -2,12 +2,12 @@ from __future__ import annotations
 
 import math
 import uuid
-from collections import defaultdict
 
-from shapely.geometry import LineString, MultiLineString, Point, Polygon
-from shapely.ops import nearest_points, unary_union
+from shapely.geometry import LineString, Point, Polygon
+from shapely.ops import nearest_points
 
 from ..models import RoomCreateRequest, RoomShape, SceneManifest, WallSegment
+from .shared_portals import annotate_shared_walls
 
 
 MIN_VERTEX_DISTANCE = 0.025
@@ -70,7 +70,7 @@ def snap_room_polygon(
     room_id: str | None = None,
     tolerance: float = ROOM_SNAP_DISTANCE,
 ) -> list[tuple[float, float]]:
-    """Snap room vertices to nearby room vertices/edges so adjacent rooms share one exact wall."""
+    """Snap vertices to nearby room boundaries while preserving separate room-owned walls."""
     other_rooms = [room for room in scene.rooms if room.id != room_id and len(room.polygon) >= 3]
     if not other_rooms:
         return points
@@ -104,99 +104,35 @@ def snap_room_polygon(
     return snapped
 
 
-def _flatten_lines(geometry) -> list[LineString]:
-    if geometry.is_empty:
-        return []
-    if isinstance(geometry, LineString):
-        return [geometry]
-    if isinstance(geometry, MultiLineString):
-        return list(geometry.geoms)
-    result: list[LineString] = []
-    for item in getattr(geometry, "geoms", []):
-        result.extend(_flatten_lines(item))
-    return result
-
-
-def _merge_axis_intervals(
-    groups: dict[float, list[tuple[float, float]]],
-    horizontal: bool,
-    tolerance: float = 0.03,
-) -> list[tuple[tuple[float, float], tuple[float, float]]]:
-    merged_segments: list[tuple[tuple[float, float], tuple[float, float]]] = []
-    for axis, intervals in groups.items():
-        intervals.sort()
-        merged: list[list[float]] = []
-        for start, end in intervals:
-            if not merged or start > merged[-1][1] + tolerance:
-                merged.append([start, end])
-            else:
-                merged[-1][1] = max(merged[-1][1], end)
-        for start, end in merged:
-            if end - start < 0.08:
-                continue
-            if horizontal:
-                merged_segments.append(((start, axis), (end, axis)))
-            else:
-                merged_segments.append(((axis, start), (axis, end)))
-    return merged_segments
-
-
 def walls_from_rooms(scene: SceneManifest) -> list[WallSegment]:
-    source_lines: list[LineString] = []
-    room_polygons: list[Polygon] = []
+    """Create one independent wall record for every room edge, then link coincident pairs.
+
+    Shared walls remain separate room objects. Their render thickness and offsets divide the
+    physical partition between the two room-owned meshes, preventing Z-fighting without
+    permanently combining the meshes.
+    """
+    thickness = scene.walls[0].thickness if scene.walls else 0.16
+    walls: list[WallSegment] = []
     for room in scene.rooms:
         if len(room.polygon) < 3:
             continue
-        polygon = Polygon(room.polygon)
-        if polygon.is_valid and not polygon.is_empty:
-            room_polygons.append(polygon)
-        source_lines.extend(_room_edges(room))
-
-    if not source_lines:
-        return []
-
-    network = unary_union(source_lines)
-    footprint = unary_union(room_polygons) if room_polygons else None
-    outer_boundary = footprint.boundary if footprint is not None and not footprint.is_empty else None
-    horizontal: dict[float, list[tuple[float, float]]] = defaultdict(list)
-    vertical: dict[float, list[tuple[float, float]]] = defaultdict(list)
-    diagonal: list[tuple[tuple[float, float], tuple[float, float]]] = []
-
-    for line in _flatten_lines(network):
-        coordinates = list(line.coords)
-        for start, end in zip(coordinates, coordinates[1:]):
-            x1, z1 = map(float, start)
-            x2, z2 = map(float, end)
-            if math.dist((x1, z1), (x2, z2)) < 0.08:
+        closed = room.polygon + [room.polygon[0]]
+        for edge_index, (start, end) in enumerate(zip(closed, closed[1:])):
+            if math.dist(start, end) < 0.08:
                 continue
-            if abs(z2 - z1) <= 0.025:
-                axis = round((z1 + z2) / 2, 2)
-                horizontal[axis].append((min(x1, x2), max(x1, x2)))
-            elif abs(x2 - x1) <= 0.025:
-                axis = round((x1 + x2) / 2, 2)
-                vertical[axis].append((min(z1, z2), max(z1, z2)))
-            else:
-                diagonal.append(((x1, z1), (x2, z2)))
-
-    segments = _merge_axis_intervals(horizontal, True) + _merge_axis_intervals(vertical, False) + diagonal
-    thickness = scene.walls[0].thickness if scene.walls else 0.16
-    walls: list[WallSegment] = []
-    for start, end in segments:
-        segment = LineString([start, end])
-        midpoint = segment.interpolate(0.5, normalized=True)
-        exterior = bool(outer_boundary is not None and outer_boundary.distance(midpoint) <= 0.04)
-        walls.append(
-            WallSegment(
-                id=f"wall-{uuid.uuid4().hex[:8]}",
-                start=(round(start[0], 3), round(start[1], 3)),
-                end=(round(end[0], 3), round(end[1], 3)),
-                height=scene.wall_height_m,
-                thickness=thickness,
-                wall_type="exterior" if exterior else "interior",
-                confidence=1.0,
+            walls.append(
+                WallSegment(
+                    id=f"wall-{room.id}-{edge_index}",
+                    start=(round(start[0], 3), round(start[1], 3)),
+                    end=(round(end[0], 3), round(end[1], 3)),
+                    height=scene.wall_height_m,
+                    thickness=thickness,
+                    wall_type="exterior",
+                    confidence=1.0,
+                    owner_room_id=room.id,
+                )
             )
-        )
-    return walls
+    return annotate_shared_walls(scene, walls)
 
 
 def rebuild_scene_from_rooms(scene: SceneManifest) -> SceneManifest:
@@ -241,11 +177,13 @@ def rebuild_scene_from_rooms(scene: SceneManifest) -> SceneManifest:
         and "probabilistic" not in warning.lower()
         and "compile production" not in warning.lower()
         and "manually placed opening" not in warning.lower()
+        and "nearby room vertices" not in warning.lower()
+        and "shared wall" not in warning.lower()
     ]
     messages = [
-        "Nearby room vertices snap within 0.22 m so adjacent rooms share one wall instead of creating a gap or duplicate wall.",
-        "Manual free-form room polygons are authoritative; walls are rebuilt from every room edge.",
-        "Doors on a shared wall connect both rooms and become traversable in first-person mode when opened.",
+        "Nearby room vertices snap within 0.22 m while each room keeps its own wall objects.",
+        "Touching parallel walls are linked as one shared boundary without permanently merging their meshes.",
+        "A door on a shared boundary creates one portal entity that punches every linked room wall.",
         "Compile the production scene after editing to recalculate objects and the walkthrough path.",
     ]
     if any(opening.wall_id is None for opening in scene.openings):
