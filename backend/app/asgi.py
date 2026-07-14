@@ -8,20 +8,28 @@ from .architecture_api import router as architecture_router
 from .opening_api import router as opening_router
 from .interior_api import router as interior_router
 from .services.rendering_v15 import blender_render as detailed_blender_render
+from .services.strict_geometry import (
+    add_room_guarded,
+    analyze_floorplan_strict,
+    update_room_geometry_guarded,
+)
 
 
-APP_VERSION = "1.5.1"
+APP_VERSION = "1.5.2"
 app = main_module.app
 app.version = APP_VERSION
 main_module.APP_VERSION = APP_VERSION
 main_module.blender_render = detailed_blender_render
+main_module.analyze_floorplan = analyze_floorplan_strict
+main_module.add_room = add_room_guarded
+main_module.update_room_geometry = update_room_geometry_guarded
 
 
 def _has_route(path: str) -> bool:
     return any(getattr(route, "path", None) == path for route in app.routes)
 
 
-# Replace the legacy health route so the packaged ASGI application and UI always report the release version.
+# Replace the legacy health route so development and packaged builds report the same release.
 app.router.routes = [route for route in app.router.routes if getattr(route, "path", None) != "/health"]
 
 
