@@ -10,7 +10,7 @@ from .interior_api import router as interior_router
 from .services.rendering_v15 import blender_render as detailed_blender_render
 
 
-APP_VERSION = "1.5.0"
+APP_VERSION = "1.5.1"
 app = main_module.app
 app.version = APP_VERSION
 main_module.APP_VERSION = APP_VERSION
