@@ -10,11 +10,12 @@ from shapely.geometry import Polygon
 from shapely.ops import unary_union
 
 from ..models import AnalyzeRequest, RoomCreateRequest, SceneManifest
+from ..storage import project_dir
+from .floor_mask import write_boundary_floor_masks
 from .floorplan import analyze_floorplan as legacy_analyze_floorplan
 from .layout import add_room as legacy_add_room
 from .layout import update_room_geometry as legacy_update_room_geometry
 from .plan_boundary import detect_plan_boundary, filter_rooms_by_image_boundary
-
 
 EXTERIOR_WARNING = (
     "Exterior white space touching any image edge is classified as empty space and is excluded from rooms."
@@ -121,12 +122,15 @@ def analyze_floorplan_strict(project_id: str, image_path: Path, request: Analyze
     image = cv2.imread(str(image_path), cv2.IMREAD_COLOR)
     if image is not None:
         boundary = detect_plan_boundary(image)
+        write_boundary_floor_masks(boundary, project_dir(project_id) / "working")
         scene = filter_rooms_by_image_boundary(scene, boundary)
         height, width = image.shape[:2]
         scene = filter_exterior_rooms(scene, width_px=width, height_px=height)
     else:
         scene = filter_exterior_rooms(scene)
-    scene.project_metadata.parser_version = "arch-ai-1.5.4"
+    scene.reference_image_url = f"/api/v1/projects/{project_id}/floorplan-preview"
+    scene.reference_image_path = str(project_dir(project_id) / "working" / "floorplan.png")
+    scene.project_metadata.parser_version = "arch-ai-1.5.6"
     return scene
 
 
