@@ -19,8 +19,10 @@ router = APIRouter(prefix="/api/v1")
 
 MATERIALS = Literal["fabric", "leather", "oak", "walnut", "stone", "porcelain", "chrome", "painted_metal"]
 INTERIOR_CATEGORIES = {
-    "kitchen", "living_room", "bathroom", "bedroom", "dining_room", "office", "outdoor",
+    "kitchen", "living_room", "bathroom", "bedroom", "dining_room", "office", "outdoor", "characters",
 }
+MODEL_SUFFIXES = {".glb", ".gltf", ".obj", ".stl", ".ply"}
+IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".webp"}
 
 
 class FurnitureCreateRequest(BaseModel):
@@ -157,8 +159,12 @@ async def upload_interior_asset(
     if category not in INTERIOR_CATEGORIES:
         raise HTTPException(status_code=400, detail="Unknown interior asset category")
     suffix = Path(file.filename or "").suffix.lower()
-    if suffix not in {".png", ".jpg", ".jpeg", ".webp"}:
-        raise HTTPException(status_code=415, detail="Interior reference must be PNG, JPG, JPEG or WEBP")
+    allowed = MODEL_SUFFIXES if category == "characters" else IMAGE_SUFFIXES | MODEL_SUFFIXES
+    if suffix not in allowed:
+        raise HTTPException(
+            status_code=415,
+            detail="Character/model assets must be GLB, GLTF, OBJ, STL or PLY; reference images may be PNG, JPG or WEBP",
+        )
     destination = await save_upload(project_id, file, f"assets/{category}", f"{slot}-")
     key = f"{category}/{slot}"
     asset = AssetFile(
@@ -169,17 +175,22 @@ async def upload_interior_asset(
         slot=slot,
         label=label.strip() or slot.replace("_", " ").title(),
     )
-    mesh_output = project_dir(project_id) / "assets" / category / f"{slot}.glb"
-    try:
-        generated = reconstruct_image_to_3d(destination, mesh_output)
-        if generated:
-            asset.mesh_path = str(generated)
-            asset.mesh_url = f"/api/v1/projects/{project_id}/files/assets/{category}/{generated.name}"
-            asset.status = "mesh_ready"
-        else:
-            asset.status = "reference_ready"
-    except Exception as exc:
-        asset.status = f"reference_ready; reconstruction_failed: {str(exc)[:140]}"
+    if suffix in MODEL_SUFFIXES:
+        asset.mesh_path = str(destination)
+        asset.mesh_url = asset.url
+        asset.status = "mesh_ready"
+    else:
+        mesh_output = project_dir(project_id) / "assets" / category / f"{slot}.glb"
+        try:
+            generated = reconstruct_image_to_3d(destination, mesh_output)
+            if generated:
+                asset.mesh_path = str(generated)
+                asset.mesh_url = f"/api/v1/projects/{project_id}/files/assets/{category}/{generated.name}"
+                asset.status = "mesh_ready"
+            else:
+                asset.status = "reference_ready"
+        except Exception as exc:
+            asset.status = f"reference_ready; reconstruction_failed: {str(exc)[:140]}"
     project.assets[key] = asset
     project.status = "interior_asset_uploaded"
     if project.scene:
