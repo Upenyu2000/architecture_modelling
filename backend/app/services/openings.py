@@ -119,23 +119,33 @@ def _opening_wall_ids(opening: Opening) -> set[str]:
     return values
 
 
-def _attach_portal(
-    scene: SceneManifest,
-    opening: Opening,
-    primary: WallSegment,
-) -> None:
+def _attach_portal(scene: SceneManifest, opening: Opening, primary: WallSegment) -> None:
     walls = shared_wall_cluster(scene, primary, opening.position, opening.width)
-    opening.wall_id = primary.id
     opening.wall_ids = [wall.id for wall in walls]
-    opening.room_ids = portal_room_ids(scene, walls, opening.position)
     opening.portal_id = opening.portal_id or f"portal-{uuid.uuid4().hex[:10]}"
 
+    if len(walls) > 1:
+        projected_positions: list[tuple[float, float]] = []
+        for wall in walls:
+            ratio, _distance = _project_ratio(wall, opening.position)
+            projected_positions.append((
+                wall.start[0] + (wall.end[0] - wall.start[0]) * ratio,
+                wall.start[1] + (wall.end[1] - wall.start[1]) * ratio,
+            ))
+        opening.position = (
+            round(sum(point[0] for point in projected_positions) / len(projected_positions), 4),
+            round(sum(point[1] for point in projected_positions) / len(projected_positions), 4),
+        )
+        # The renderer treats a null legacy wall_id as a geometric portal and applies the
+        # same opening to every touching wall. wall_ids remains the authoritative ownership list.
+        opening.wall_id = None
+    else:
+        opening.wall_id = primary.id
 
-def _equivalent_portal(
-    scene: SceneManifest,
-    candidate: Opening,
-    ignore_id: str | None = None,
-) -> Opening | None:
+    opening.room_ids = portal_room_ids(scene, walls, opening.position)
+
+
+def _equivalent_portal(scene: SceneManifest, candidate: Opening, ignore_id: str | None = None) -> Opening | None:
     candidate_ids = _opening_wall_ids(candidate)
     for item in scene.openings:
         if item.id == ignore_id or item.opening_type != candidate.opening_type:
@@ -188,6 +198,8 @@ def _deduplicate_portals(scene: SceneManifest) -> None:
         existing.wall_ids = sorted(_opening_wall_ids(existing).union(_opening_wall_ids(opening)))
         existing.room_ids = sorted(set(existing.room_ids).union(opening.room_ids))
         existing.portal_id = existing.portal_id or opening.portal_id or f"portal-{uuid.uuid4().hex[:10]}"
+        if len(existing.wall_ids) > 1:
+            existing.wall_id = None
         if opening.source == "manual" and existing.source != "manual":
             preserved_id = existing.id
             replacement = opening.model_copy(deep=True)
@@ -195,6 +207,7 @@ def _deduplicate_portals(scene: SceneManifest) -> None:
             replacement.wall_ids = existing.wall_ids
             replacement.room_ids = existing.room_ids
             replacement.portal_id = existing.portal_id
+            replacement.wall_id = existing.wall_id
             canonical[canonical.index(existing)] = replacement
     scene.openings = canonical
 
@@ -207,9 +220,12 @@ def _refresh(scene: SceneManifest) -> SceneManifest:
         if opening.wall_id and opening.wall_id not in valid_wall_ids:
             opening.wall_id = None
         if opening.wall_id:
-            primary = _wall(scene, opening.wall_id)
-            _attach_portal(scene, opening, primary)
-        elif not opening.portal_id:
+            _attach_portal(scene, opening, _wall(scene, opening.wall_id))
+        elif len(opening.wall_ids) == 1:
+            opening.wall_id = opening.wall_ids[0]
+        elif len(opening.wall_ids) > 1:
+            opening.wall_id = None
+        if not opening.portal_id:
             opening.portal_id = f"portal-{uuid.uuid4().hex[:10]}"
     _deduplicate_portals(scene)
     scene.project_metadata.detected_openings = len(scene.openings)
@@ -312,12 +328,14 @@ def add_opening_at_position(
         duplicate.wall_ids = sorted(_opening_wall_ids(duplicate).union(_opening_wall_ids(opening)))
         duplicate.room_ids = sorted(set(duplicate.room_ids).union(opening.room_ids))
         duplicate.portal_id = duplicate.portal_id or opening.portal_id
+        if len(duplicate.wall_ids) > 1:
+            duplicate.wall_id = None
         return _refresh(scene)
     if _overlaps(scene, opening):
         raise ValueError("This opening overlaps another opening at the selected location.")
 
     scene.openings.append(opening)
-    if opening.wall_id is None:
+    if not opening.wall_ids:
         warning = "A manually placed opening is not attached to a wall yet. It will snap automatically when a nearby wall is created or detected."
         if warning not in scene.warnings:
             scene.warnings.append(warning)
@@ -415,7 +433,8 @@ def reattach_manual_openings(scene: SceneManifest, maximum_distance: float = 1.0
     for opening in scene.openings:
         if opening.source != "manual":
             continue
-        current_wall = next((wall for wall in scene.walls if wall.id == opening.wall_id), None) if opening.wall_id else None
+        current_id = opening.wall_id or (opening.wall_ids[0] if opening.wall_ids else None)
+        current_wall = next((wall for wall in scene.walls if wall.id == current_id), None) if current_id else None
         if current_wall is not None:
             ratio, _ = _project_ratio(current_wall, opening.position)
             try:
@@ -492,7 +511,7 @@ def update_opening(scene: SceneManifest, opening_id: str, request: OpeningUpdate
     if not opening:
         raise KeyError("Opening not found")
     data = request.model_dump(exclude_none=True)
-    wall_id = data.get("wall_id", opening.wall_id)
+    wall_id = data.get("wall_id", opening.wall_id or (opening.wall_ids[0] if opening.wall_ids else None))
     if not wall_id:
         raise ValueError("Choose a wall for this opening.")
     return update_opening_at_position(
