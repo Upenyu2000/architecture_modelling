@@ -7,6 +7,7 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 await import('./generate-v154-room-editor.mjs');
 await import('./prepare-v153-viewport.mjs');
 await import('./generate-v154-scene-preview.mjs');
+await import('./patch-v156-stability.mjs');
 
 const appPath = path.join(root, 'src', 'renderer', 'App.tsx');
 let app = await readFile(appPath, 'utf8');
@@ -16,4 +17,4 @@ app = app.replace(
 );
 await writeFile(appPath, app, 'utf8');
 
-console.log('Prepared and activated Dream Home Visualizer 1.5.4 runtime components.');
+console.log('Prepared and activated Dream Home Visualizer 1.5.6 stable runtime components.');
