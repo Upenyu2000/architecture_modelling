@@ -74,6 +74,11 @@ class WallSegment(BaseModel):
     thickness: float = 0.16
     wall_type: Literal["exterior", "interior", "partition"] = "interior"
     confidence: float = Field(default=0.75, ge=0.0, le=1.0)
+    owner_room_id: str | None = None
+    linked_wall_ids: list[str] = Field(default_factory=list)
+    shared_group_id: str | None = None
+    render_offset: tuple[float, float] = (0.0, 0.0)
+    render_thickness: float | None = None
 
 
 class RoomShape(BaseModel):
@@ -97,6 +102,9 @@ class Opening(BaseModel):
     height: float = Field(default=2.1, gt=0.15, le=12.0)
     rotation_deg: float = 0.0
     wall_id: str | None = None
+    wall_ids: list[str] = Field(default_factory=list)
+    room_ids: list[str] = Field(default_factory=list)
+    portal_id: str | None = None
     placement_ratio: float | None = Field(default=None, ge=0.0, le=1.0)
     swing_direction: Literal["clockwise", "counterclockwise", "none"] = "none"
     hinge_side: Literal["left", "right", "centre", "none"] = "none"

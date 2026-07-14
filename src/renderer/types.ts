@@ -48,6 +48,11 @@ export interface WallSegment {
   thickness: number;
   wall_type: 'exterior' | 'interior' | 'partition';
   confidence: number;
+  owner_room_id?: string | null;
+  linked_wall_ids?: string[];
+  shared_group_id?: string | null;
+  render_offset?: [number, number];
+  render_thickness?: number | null;
 }
 
 export interface RoomShape {
@@ -71,6 +76,9 @@ export interface Opening {
   height: number;
   rotation_deg: number;
   wall_id?: string | null;
+  wall_ids?: string[];
+  room_ids?: string[];
+  portal_id?: string | null;
   placement_ratio?: number | null;
   swing_direction: 'clockwise' | 'counterclockwise' | 'none';
   hinge_side: 'left' | 'right' | 'centre' | 'none';

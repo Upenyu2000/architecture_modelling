@@ -104,7 +104,9 @@ def main() -> None:
         if abs(wall.start[0] - 5.0) < 0.02 and abs(wall.end[0] - 5.0) < 0.02
         and min(wall.start[1], wall.end[1]) <= 1.01 and max(wall.start[1], wall.end[1]) >= 4.99
     ]
-    assert len(shared) == 1, "Adjacent rooms must generate one shared wall"
+    assert len(shared) == 2, "Each adjacent room must retain its independent shared-boundary wall"
+    assert shared[1].id in shared[0].linked_wall_ids
+    assert shared[0].id in shared[1].linked_wall_ids
 
     adjacent = add_opening_at_position(
         adjacent,
@@ -114,7 +116,8 @@ def main() -> None:
         width=0.9,
     )
     door = adjacent.openings[0]
-    assert door.wall_id == shared[0].id
+    assert door.wall_id is None
+    assert set(door.wall_ids) == {shared[0].id, shared[1].id}
     assert abs(door.position[0] - 5.0) < 0.01
     assert door.interactive is True
 
@@ -124,9 +127,9 @@ def main() -> None:
         [(5.08, 1.0), (9.0, 1.0), (9.0, 5.0), (5.08, 5.0)],
     )
     assert len(adjacent.openings) == 1
-    assert adjacent.openings[0].wall_id is not None, "Manual door must reattach after shared-wall rebuild"
+    assert len(adjacent.openings[0].wall_ids) == 2, "Manual shared portal must reattach to both rebuilt walls"
 
-    print(f"Free-form smoke test passed: {len(scene.rooms)} rooms, shared-room snapping and interactive doorway")
+    print(f"Free-form smoke test passed: {len(scene.rooms)} rooms, independent shared walls and one portal")
 
 
 if __name__ == "__main__":

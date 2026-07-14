@@ -4,6 +4,7 @@ import math
 import uuid
 
 from ..models import Opening, OpeningCreateRequest, OpeningUpdateRequest, SceneManifest, WallSegment
+from .shared_portals import annotate_shared_walls, portal_room_ids, shared_wall_cluster
 
 
 WINDOW_TYPES = {
@@ -111,31 +112,122 @@ def _clamped_position(scene: SceneManifest, point: tuple[float, float]) -> tuple
     )
 
 
-def _overlaps(scene: SceneManifest, candidate: Opening, ignore_id: str | None = None) -> bool:
-    if candidate.wall_id and candidate.placement_ratio is not None:
-        wall = _wall(scene, candidate.wall_id)
-        length = max(math.dist(wall.start, wall.end), 1e-6)
-        start = candidate.placement_ratio - candidate.width / (2 * length)
-        end = candidate.placement_ratio + candidate.width / (2 * length)
-        for item in scene.openings:
-            if item.id == ignore_id or item.wall_id != candidate.wall_id or item.placement_ratio is None:
-                continue
-            other_start = item.placement_ratio - item.width / (2 * length)
-            other_end = item.placement_ratio + item.width / (2 * length)
-            if min(end, other_end) - max(start, other_start) > 0.04 / length:
-                return True
-        return False
+def _opening_wall_ids(opening: Opening) -> set[str]:
+    values = set(opening.wall_ids)
+    if opening.wall_id:
+        values.add(opening.wall_id)
+    return values
 
+
+def _attach_portal(scene: SceneManifest, opening: Opening, primary: WallSegment) -> None:
+    walls = shared_wall_cluster(scene, primary, opening.position, opening.width)
+    opening.wall_ids = [wall.id for wall in walls]
+    opening.portal_id = opening.portal_id or f"portal-{uuid.uuid4().hex[:10]}"
+
+    if len(walls) > 1:
+        projected_positions: list[tuple[float, float]] = []
+        for wall in walls:
+            ratio, _distance = _project_ratio(wall, opening.position)
+            projected_positions.append((
+                wall.start[0] + (wall.end[0] - wall.start[0]) * ratio,
+                wall.start[1] + (wall.end[1] - wall.start[1]) * ratio,
+            ))
+        opening.position = (
+            round(sum(point[0] for point in projected_positions) / len(projected_positions), 4),
+            round(sum(point[1] for point in projected_positions) / len(projected_positions), 4),
+        )
+        # The renderer treats a null legacy wall_id as a geometric portal and applies the
+        # same opening to every touching wall. wall_ids remains the authoritative ownership list.
+        opening.wall_id = None
+    else:
+        opening.wall_id = primary.id
+
+    opening.room_ids = portal_room_ids(scene, walls, opening.position)
+
+
+def _equivalent_portal(scene: SceneManifest, candidate: Opening, ignore_id: str | None = None) -> Opening | None:
+    candidate_ids = _opening_wall_ids(candidate)
     for item in scene.openings:
-        if item.id == ignore_id or item.wall_id:
+        if item.id == ignore_id or item.opening_type != candidate.opening_type:
             continue
-        clearance = max(0.22, min(candidate.width, item.width) * 0.34)
-        if math.dist(candidate.position, item.position) < clearance:
-            return True
+        item_ids = _opening_wall_ids(item)
+        same_boundary = bool(candidate_ids and item_ids and candidate_ids.intersection(item_ids))
+        if not same_boundary and candidate.portal_id and item.portal_id == candidate.portal_id:
+            same_boundary = True
+        if not same_boundary:
+            continue
+        tolerance = max(0.16, min(candidate.width, item.width) * 0.28)
+        if math.dist(candidate.position, item.position) <= tolerance:
+            return item
+    return None
+
+
+def _overlaps(scene: SceneManifest, candidate: Opening, ignore_id: str | None = None) -> bool:
+    candidate_ids = _opening_wall_ids(candidate)
+    for item in scene.openings:
+        if item.id == ignore_id:
+            continue
+        item_ids = _opening_wall_ids(item)
+        if candidate_ids and item_ids and candidate_ids.intersection(item_ids):
+            clearance = max(0.12, (candidate.width + item.width) / 2 - 0.04)
+            if math.dist(candidate.position, item.position) < clearance:
+                return True
+        elif not candidate_ids and not item_ids:
+            clearance = max(0.22, min(candidate.width, item.width) * 0.34)
+            if math.dist(candidate.position, item.position) < clearance:
+                return True
     return False
 
 
+def _deduplicate_portals(scene: SceneManifest) -> None:
+    canonical: list[Opening] = []
+    for opening in scene.openings:
+        existing = None
+        for candidate in canonical:
+            if candidate.opening_type != opening.opening_type:
+                continue
+            shared_ids = _opening_wall_ids(candidate).intersection(_opening_wall_ids(opening))
+            same_portal = candidate.portal_id and opening.portal_id and candidate.portal_id == opening.portal_id
+            tolerance = max(0.16, min(candidate.width, opening.width) * 0.28)
+            if (shared_ids or same_portal) and math.dist(candidate.position, opening.position) <= tolerance:
+                existing = candidate
+                break
+        if existing is None:
+            canonical.append(opening)
+            continue
+        existing.wall_ids = sorted(_opening_wall_ids(existing).union(_opening_wall_ids(opening)))
+        existing.room_ids = sorted(set(existing.room_ids).union(opening.room_ids))
+        existing.portal_id = existing.portal_id or opening.portal_id or f"portal-{uuid.uuid4().hex[:10]}"
+        if len(existing.wall_ids) > 1:
+            existing.wall_id = None
+        if opening.source == "manual" and existing.source != "manual":
+            preserved_id = existing.id
+            replacement = opening.model_copy(deep=True)
+            replacement.id = preserved_id
+            replacement.wall_ids = existing.wall_ids
+            replacement.room_ids = existing.room_ids
+            replacement.portal_id = existing.portal_id
+            replacement.wall_id = existing.wall_id
+            canonical[canonical.index(existing)] = replacement
+    scene.openings = canonical
+
+
 def _refresh(scene: SceneManifest) -> SceneManifest:
+    annotate_shared_walls(scene)
+    valid_wall_ids = {wall.id for wall in scene.walls}
+    for opening in scene.openings:
+        opening.wall_ids = [wall_id for wall_id in opening.wall_ids if wall_id in valid_wall_ids]
+        if opening.wall_id and opening.wall_id not in valid_wall_ids:
+            opening.wall_id = None
+        if opening.wall_id:
+            _attach_portal(scene, opening, _wall(scene, opening.wall_id))
+        elif len(opening.wall_ids) == 1:
+            opening.wall_id = opening.wall_ids[0]
+        elif len(opening.wall_ids) > 1:
+            opening.wall_id = None
+        if not opening.portal_id:
+            opening.portal_id = f"portal-{uuid.uuid4().hex[:10]}"
+    _deduplicate_portals(scene)
     scene.project_metadata.detected_openings = len(scene.openings)
     scene.collision_segments = [(wall.start, wall.end) for wall in scene.walls]
     return scene
@@ -180,6 +272,7 @@ def add_opening_at_position(
     interactive: bool = True,
     default_open: bool = False,
 ) -> SceneManifest:
+    annotate_shared_walls(scene)
     default_width, default_height = DEFAULTS[opening_type]
     resolved_width = float(width or default_width)
     resolved_height = float(height or default_height)
@@ -210,6 +303,7 @@ def add_opening_at_position(
     )
     opening = Opening(
         id=f"opening-{uuid.uuid4().hex[:10]}",
+        portal_id=f"portal-{uuid.uuid4().hex[:10]}",
         opening_type=opening_type,  # type: ignore[arg-type]
         position=resolved_position,
         width=round(resolved_width, 3),
@@ -226,10 +320,22 @@ def add_opening_at_position(
         source="manual",
         confidence=1.0,
     )
+    if target_wall is not None:
+        _attach_portal(scene, opening, target_wall)
+
+    duplicate = _equivalent_portal(scene, opening)
+    if duplicate is not None:
+        duplicate.wall_ids = sorted(_opening_wall_ids(duplicate).union(_opening_wall_ids(opening)))
+        duplicate.room_ids = sorted(set(duplicate.room_ids).union(opening.room_ids))
+        duplicate.portal_id = duplicate.portal_id or opening.portal_id
+        if len(duplicate.wall_ids) > 1:
+            duplicate.wall_id = None
+        return _refresh(scene)
     if _overlaps(scene, opening):
         raise ValueError("This opening overlaps another opening at the selected location.")
+
     scene.openings.append(opening)
-    if opening.wall_id is None:
+    if not opening.wall_ids:
         warning = "A manually placed opening is not attached to a wall yet. It will snap automatically when a nearby wall is created or detected."
         if warning not in scene.warnings:
             scene.warnings.append(warning)
@@ -255,6 +361,7 @@ def update_opening_at_position(
     interactive: bool | None = None,
     default_open: bool | None = None,
 ) -> SceneManifest:
+    annotate_shared_walls(scene)
     opening = next((item for item in scene.openings if item.id == opening_id), None)
     if not opening:
         raise KeyError("Opening not found")
@@ -282,6 +389,8 @@ def update_opening_at_position(
         opening.rotation_deg = resolved_rotation
     else:
         opening.wall_id = None
+        opening.wall_ids = []
+        opening.room_ids = []
         opening.placement_ratio = None
         opening.position = _clamped_position(scene, requested_position)
         opening.rotation_deg = round(float(rotation_deg if rotation_deg is not None else opening.rotation_deg), 3)
@@ -307,35 +416,52 @@ def update_opening_at_position(
         opening.swing_angle_deg = float(swing_angle_deg)
     opening.source = "manual"
     opening.confidence = 1.0
+    opening.portal_id = opening.portal_id or f"portal-{uuid.uuid4().hex[:10]}"
+    if target_wall is not None:
+        _attach_portal(scene, opening, target_wall)
+
+    duplicate = _equivalent_portal(scene, opening, ignore_id=opening.id)
+    if duplicate is not None:
+        raise ValueError("Another door or window already owns this shared portal.")
     if _overlaps(scene, opening, ignore_id=opening.id):
         raise ValueError("This opening overlaps another opening at the selected location.")
     return _refresh(scene)
 
 
 def reattach_manual_openings(scene: SceneManifest, maximum_distance: float = 1.0) -> SceneManifest:
+    annotate_shared_walls(scene)
     for opening in scene.openings:
         if opening.source != "manual":
             continue
-        current_wall = next((wall for wall in scene.walls if wall.id == opening.wall_id), None) if opening.wall_id else None
+        current_id = opening.wall_id or (opening.wall_ids[0] if opening.wall_ids else None)
+        current_wall = next((wall for wall in scene.walls if wall.id == current_id), None) if current_id else None
         if current_wall is not None:
             ratio, _ = _project_ratio(current_wall, opening.position)
             try:
                 opening.position, opening.rotation_deg, opening.placement_ratio = _pose(current_wall, ratio, opening.width)
+                _attach_portal(scene, opening, current_wall)
             except ValueError:
                 opening.wall_id = None
+                opening.wall_ids = []
+                opening.room_ids = []
                 opening.placement_ratio = None
             continue
         match = nearest_wall(scene, opening.position, maximum_distance=max(maximum_distance, opening.width * 0.5))
         if not match:
             opening.wall_id = None
+            opening.wall_ids = []
+            opening.room_ids = []
             opening.placement_ratio = None
             continue
         wall, ratio, _distance = match
         try:
             opening.position, opening.rotation_deg, opening.placement_ratio = _pose(wall, ratio, opening.width)
             opening.wall_id = wall.id
+            _attach_portal(scene, opening, wall)
         except ValueError:
             opening.wall_id = None
+            opening.wall_ids = []
+            opening.room_ids = []
             opening.placement_ratio = None
     return _refresh(scene)
 
@@ -347,7 +473,8 @@ def restore_manual_openings(scene: SceneManifest, preserved: list[Opening]) -> S
     for opening in manual:
         duplicate = next((
             item for item in scene.openings
-            if math.dist(item.position, opening.position) < max(0.25, min(item.width, opening.width) * 0.4)
+            if item.opening_type == opening.opening_type
+            and math.dist(item.position, opening.position) < max(0.25, min(item.width, opening.width) * 0.4)
         ), None)
         if duplicate is not None:
             scene.openings.remove(duplicate)
@@ -384,7 +511,7 @@ def update_opening(scene: SceneManifest, opening_id: str, request: OpeningUpdate
     if not opening:
         raise KeyError("Opening not found")
     data = request.model_dump(exclude_none=True)
-    wall_id = data.get("wall_id", opening.wall_id)
+    wall_id = data.get("wall_id", opening.wall_id or (opening.wall_ids[0] if opening.wall_ids else None))
     if not wall_id:
         raise ValueError("Choose a wall for this opening.")
     return update_opening_at_position(
