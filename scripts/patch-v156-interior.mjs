@@ -19,7 +19,7 @@ replaceOne(
 );
 
 replaceOne(
-  /if \(tool === 'add'\) \{\n      const room = roomAt\(point\);/,
+  /if \(tool === 'add'\) \{\r?\n\s+const room = roomAt\(point\);/,
   `if (tool === 'add') {
       const room = roomAt(point);
       if (scene.layout_mode === 'automatic' && !room) return;`,
