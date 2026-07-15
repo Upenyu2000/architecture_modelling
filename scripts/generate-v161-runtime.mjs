@@ -115,7 +115,7 @@ replaceOne(
 );
 
 replaceOne(
-  /onRoomChange=\{setCurrentRoomId\}\n            playerRadius=\{playerRadius\}\n            playerPositionRef=\{playerPositionRef\}/,
+  /onRoomChange=\{setCurrentRoomId\}\n\s+playerRadius=\{playerRadius\}\n\s+playerPositionRef=\{playerPositionRef\}/,
   `onRoomChange={setCurrentRoomId}
             playerRadius={playerRadius}
             playerPositionRef={playerPositionRef}
@@ -205,7 +205,7 @@ replaceOne(
 );
 
 replaceOne(
-  /panOffset=\{viewportPan\}\n                     playerPositionRef=\{playerPositionRef\}/,
+  /panOffset=\{viewportPan\}\n\s+playerPositionRef=\{playerPositionRef\}/,
   `panOffset={viewportPan}
                      playerPositionRef={playerPositionRef}
                      spawnRequest={activeSpawnRequest}
