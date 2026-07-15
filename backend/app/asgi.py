@@ -7,6 +7,7 @@ from . import main as main_module
 from .architecture_api import router as architecture_router
 from .opening_api import router as opening_router
 from .interior_api import router as interior_router
+from .presentation_api import router as presentation_router
 from .services.rendering_v15 import blender_render as detailed_blender_render
 from .services.strict_geometry import (
     add_room_guarded,
@@ -15,7 +16,7 @@ from .services.strict_geometry import (
 )
 
 
-APP_VERSION = "1.6.1"
+APP_VERSION = "2.0.0"
 app = main_module.app
 app.version = APP_VERSION
 main_module.APP_VERSION = APP_VERSION
@@ -44,3 +45,5 @@ if not _has_route("/api/v1/projects/{project_id}/openings"):
     app.include_router(opening_router)
 if not _has_route("/api/v1/projects/{project_id}/furniture"):
     app.include_router(interior_router)
+if not _has_route("/api/v1/projects/{project_id}/presentation-renders"):
+    app.include_router(presentation_router)
