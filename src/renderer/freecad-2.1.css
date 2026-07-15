@@ -1,0 +1,349 @@
+.freecad-workbench {
+  display: grid;
+  gap: 16px;
+  border: 1px solid rgba(249, 115, 22, 0.24);
+  background:
+    radial-gradient(circle at 100% 0%, rgba(249, 115, 22, 0.08), transparent 34%),
+    #fff;
+}
+
+.freecad-status {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid #d7eadf;
+  background: #f3fbf6;
+  color: #166534;
+}
+
+.freecad-status.offline {
+  border-color: #fed7aa;
+  background: #fff7ed;
+  color: #9a3412;
+}
+
+.freecad-status > div {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.freecad-status strong { font-size: 13px; }
+.freecad-status span,
+.freecad-status small {
+  font-size: 11px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+  opacity: 0.82;
+}
+
+.freecad-feature-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 9px;
+}
+
+.freecad-feature-grid article {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 4px 8px;
+  padding: 11px;
+  border: 1px solid #e4e4e7;
+  border-radius: 12px;
+  background: #fafafa;
+}
+
+.freecad-feature-grid article svg { color: #f97316; }
+.freecad-feature-grid article strong { font-size: 12px; }
+.freecad-feature-grid article span {
+  grid-column: 1 / -1;
+  color: #71717a;
+  font-size: 10px;
+  line-height: 1.4;
+}
+
+.freecad-subhead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-top: 4px;
+  color: #27272a;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.freecad-parameter-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.freecad-parameter-grid label {
+  position: relative;
+  display: grid;
+  gap: 6px;
+  color: #52525b;
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.freecad-parameter-grid input,
+.freecad-parameter-grid select,
+.freecad-export-row select {
+  min-width: 0;
+  width: 100%;
+  height: 38px;
+  border: 1px solid #d4d4d8;
+  border-radius: 9px;
+  background: #fff;
+  padding: 0 10px;
+  color: #18181b;
+}
+
+.freecad-parameter-grid label > span {
+  position: absolute;
+  right: 10px;
+  bottom: 11px;
+  color: #a1a1aa;
+  font-size: 10px;
+  pointer-events: none;
+}
+
+.freecad-parameter-grid label:has(> span) input { padding-right: 30px; }
+
+.freecad-history-actions,
+.freecad-export-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.freecad-history-actions button,
+.freecad-export-row button {
+  min-height: 36px;
+}
+
+.freecad-history-actions .primary { margin-left: auto; }
+
+.freecad-quantity-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.freecad-quantity-grid article {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid #e4e4e7;
+  border-radius: 10px;
+  background: linear-gradient(145deg, #fff, #fafafa);
+}
+
+.freecad-quantity-grid strong {
+  color: #18181b;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.freecad-quantity-grid span {
+  color: #71717a;
+  font-size: 9px;
+  line-height: 1.3;
+  text-transform: capitalize;
+}
+
+.freecad-model-tree {
+  border: 1px solid #e4e4e7;
+  border-radius: 12px;
+  overflow: hidden;
+  background: #fafafa;
+}
+
+.freecad-model-tree > summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px;
+  cursor: pointer;
+  color: #27272a;
+  font-size: 12px;
+  font-weight: 750;
+  user-select: none;
+}
+
+.fc-tree-node {
+  border-top: 1px solid #eeeeef;
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.fc-tree-node summary {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 33px;
+  padding: 5px 10px;
+  cursor: pointer;
+  color: #3f3f46;
+  font-size: 11px;
+}
+
+.fc-tree-node summary strong { font-weight: 650; }
+.fc-tree-node summary small {
+  margin-left: auto;
+  color: #a1a1aa;
+  font-size: 8px;
+}
+.fc-tree-indent { flex: 0 0 auto; }
+
+.fc-tree-properties {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 5px;
+  padding: 4px 12px 10px 34px;
+}
+
+.fc-tree-properties span {
+  min-width: 0;
+  display: grid;
+  gap: 1px;
+  color: #71717a;
+  font-size: 9px;
+  overflow-wrap: anywhere;
+}
+
+.fc-tree-properties b {
+  color: #a1a1aa;
+  font-size: 8px;
+  font-weight: 700;
+  text-transform: capitalize;
+}
+
+.freecad-export-row > select { flex: 0 1 130px; }
+
+.freecad-checkbox {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #52525b;
+  font-size: 10px;
+}
+
+.freecad-import {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 13px;
+  border: 1px dashed #fb923c;
+  border-radius: 12px;
+  background: #fff7ed;
+  color: #9a3412;
+  cursor: pointer;
+}
+
+.freecad-import.disabled {
+  border-color: #d4d4d8;
+  background: #f4f4f5;
+  color: #a1a1aa;
+  cursor: not-allowed;
+}
+
+.freecad-import > span {
+  display: grid;
+  gap: 2px;
+}
+.freecad-import strong { font-size: 12px; }
+.freecad-import small { font-size: 9px; line-height: 1.4; }
+.freecad-import input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  cursor: inherit;
+}
+
+.freecad-empty {
+  padding: 18px;
+  border: 1px dashed #d4d4d8;
+  border-radius: 12px;
+  background: #fafafa;
+  color: #71717a;
+  font-size: 11px;
+  line-height: 1.5;
+  text-align: center;
+}
+
+.freecad-job {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 7px 12px;
+  align-items: center;
+  padding: 11px 12px;
+  border: 1px solid #e4e4e7;
+  border-radius: 11px;
+  background: #fafafa;
+}
+
+.freecad-job > div:first-child {
+  display: grid;
+  gap: 2px;
+}
+.freecad-job strong { font-size: 11px; text-transform: capitalize; }
+.freecad-job span { color: #71717a; font-size: 9px; }
+.freecad-job .progress {
+  grid-column: 1 / -1;
+  height: 5px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: #e4e4e7;
+}
+.freecad-job .progress i {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: #f97316;
+  transition: width 220ms ease;
+}
+.freecad-job > b { font-size: 10px; }
+.freecad-job > a {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  justify-self: end;
+  color: #ea580c;
+  font-size: 10px;
+  font-weight: 750;
+}
+
+.freecad-notice,
+.freecad-error {
+  padding: 10px 12px;
+  border-radius: 10px;
+  font-size: 10px;
+  line-height: 1.45;
+}
+.freecad-notice { background: #ecfdf5; color: #166534; }
+.freecad-error { background: #fef2f2; color: #b91c1c; }
+
+@media (max-width: 1180px) {
+  .freecad-quantity-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (max-width: 680px) {
+  .freecad-feature-grid,
+  .freecad-parameter-grid,
+  .freecad-quantity-grid,
+  .fc-tree-properties { grid-template-columns: 1fr; }
+  .freecad-history-actions .primary { margin-left: 0; }
+  .freecad-export-row > * { flex: 1 1 100%; }
+}
