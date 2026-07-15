@@ -45,11 +45,11 @@ jobs:
           path: typecheck.log
           if-no-files-found: warn
       - name: Build installer
+        timeout-minutes: 35
         shell: pwsh
         run: |
-          $Output = npm run dist:windows 2>&1
+          & npm run dist:windows 2>&1 | Tee-Object -FilePath build-windows.log
           $ExitCode = $LASTEXITCODE
-          $Output | Tee-Object -FilePath build-windows.log
           exit $ExitCode
       - name: Upload build diagnostics
         if: always()
