@@ -20,16 +20,20 @@ for (const relativePath of [
 }
 
 await import('./generate-v160-runtime.mjs');
+await import('./generate-v161-runtime.mjs');
 
 const appPath = path.join(root, 'src', 'renderer', 'App.tsx');
 let app = (await readFile(appPath, 'utf8')).replace(/\r\n/g, '\n');
 app = app.replace(
-  /from '\.\/components\/ScenePreview(?:\.v154|\.v160)?';/,
-  "from './components/ScenePreview.v160';",
+  /from '\.\/components\/ScenePreview(?:\.v154|\.v160|\.v161)?';/,
+  "from './components/ScenePreview.v161';",
 );
-app = app.replace('<span>Arch-AI Convert 1.5</span>', '<span>Arch-AI Convert 1.6</span>');
+app = app.replace(
+  /<span>Arch-AI Convert 1\.(?:5|6(?:\.1)?)<\/span>/,
+  '<span>Arch-AI Convert 1.6.1</span>',
+);
 
-if (!app.includes('1.6.0 guarded opening mutations')) {
+if (!app.includes('guarded opening mutations')) {
   const current = `  const addOpening = async (payload: OpeningPayload) => {
     if (!project) return;
     const scene = await api.addOpening(project.id, payload);
@@ -51,7 +55,7 @@ if (!app.includes('1.6.0 guarded opening mutations')) {
     setNotice('Opening removed.');
   };`;
 
-  const guarded = `  // 1.6.0 guarded opening mutations: one request at a time, with errors surfaced by run().
+  const guarded = `  // 1.6.1 guarded opening mutations: one request at a time, with errors surfaced by run().
   const addOpening = async (payload: OpeningPayload) => {
     if (!project) return;
     await run(async () => {
@@ -79,13 +83,13 @@ if (!app.includes('1.6.0 guarded opening mutations')) {
     });
   };`;
 
-  if (!app.includes(current)) throw new Error('1.6.0 app patch could not find opening mutation handlers.');
+  if (!app.includes(current)) throw new Error('1.6.1 app patch could not find opening mutation handlers.');
   app = app.replace(current, guarded);
 }
 
-if (!app.includes('<span>Arch-AI Convert 1.6</span>')) {
-  throw new Error('1.6.0 app patch could not update the visible release label.');
+if (!app.includes('<span>Arch-AI Convert 1.6.1</span>')) {
+  throw new Error('1.6.1 app patch could not update the visible release label.');
 }
 
 await writeFile(appPath, app, 'utf8');
-console.log('Prepared and activated Dream Home Visualizer 1.6.0 runtime components.');
+console.log('Prepared and activated Dream Home Visualizer 1.6.1 runtime components.');
