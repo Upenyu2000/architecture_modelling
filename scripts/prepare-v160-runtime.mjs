@@ -27,6 +27,7 @@ app = app.replace(
   /from '\.\/components\/ScenePreview(?:\.v154|\.v160)?';/,
   "from './components/ScenePreview.v160';",
 );
+app = app.replace('<span>Arch-AI Convert 1.5</span>', '<span>Arch-AI Convert 1.6</span>');
 
 if (!app.includes('1.6.0 guarded opening mutations')) {
   const current = `  const addOpening = async (payload: OpeningPayload) => {
@@ -80,6 +81,10 @@ if (!app.includes('1.6.0 guarded opening mutations')) {
 
   if (!app.includes(current)) throw new Error('1.6.0 app patch could not find opening mutation handlers.');
   app = app.replace(current, guarded);
+}
+
+if (!app.includes('<span>Arch-AI Convert 1.6</span>')) {
+  throw new Error('1.6.0 app patch could not update the visible release label.');
 }
 
 await writeFile(appPath, app, 'utf8');
