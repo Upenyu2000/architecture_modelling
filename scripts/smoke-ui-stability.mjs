@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 
 const app = readFileSync(new URL('../src/renderer/App.tsx', import.meta.url), 'utf8');
 const main = readFileSync(new URL('../src/renderer/main.tsx', import.meta.url), 'utf8');
+const packageJson = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
 const scene = readFileSync(new URL('../src/renderer/components/ScenePreview.v160.tsx', import.meta.url), 'utf8');
 const editor = readFileSync(new URL('../src/renderer/components/RoomLayoutEditor.v154.tsx', import.meta.url), 'utf8');
 const openingEditor = readFileSync(new URL('../src/renderer/components/OpeningEditor.v160.tsx', import.meta.url), 'utf8');
@@ -14,6 +15,8 @@ function assert(condition, message) {
   if (!condition) throw new Error(message);
 }
 
+assert(packageJson.version === '1.6.0', 'Package and installer version must be 1.6.0.');
+assert(app.includes('<span>Arch-AI Convert 1.6</span>'), 'The visible application release label must be 1.6.');
 assert(app.includes("./components/ScenePreview.v160"), 'The application must import the generated 1.6.0 viewport at runtime.');
 assert(app.includes('1.6.0 guarded opening mutations'), 'Opening requests must use the application busy/error guard.');
 assert(main.includes("./standalone-layout-1.5.5.css"), 'The protected standalone layout guard must load after earlier viewport styles.');
@@ -53,4 +56,4 @@ assert(/background:\s*linear-gradient/.test(standaloneStyles), 'The opaque stand
 assert(standaloneStyles.includes('@media (max-width: 1060px)'), 'The early non-overlap stacking breakpoint is missing.');
 assert(standaloneStyles.includes('.three-view-wrap canvas'), 'WebGL canvas width containment is missing.');
 
-console.log('UI stability smoke test passed: canonical shared portals, guarded door mutations, persistent first-person position, strict exterior collision, panning, PBR and protected layout');
+console.log('UI stability smoke test passed: version 1.6.0, canonical shared portals, guarded door mutations, persistent first-person position, strict exterior collision, panning, PBR and protected layout');
