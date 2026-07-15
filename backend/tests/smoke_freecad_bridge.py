@@ -37,6 +37,8 @@ with tempfile.TemporaryDirectory(prefix="freecad-smoke-") as temporary:
         WallSegment(id="w2", start=(6.0, 0.0), end=(6.0, 4.0), height=2.8, thickness=0.2, wall_type="exterior"),
         WallSegment(id="w3", start=(6.0, 4.0), end=(0.0, 4.0), height=2.8, thickness=0.2, wall_type="exterior"),
         WallSegment(id="w4", start=(0.0, 4.0), end=(0.0, 0.0), height=2.8, thickness=0.2, wall_type="exterior"),
+        WallSegment(id="shared-a", start=(3.0, 0.0), end=(3.0, 4.0), height=2.8, thickness=0.16, wall_type="interior", shared_group_id="centre-partition", linked_wall_ids=["shared-b"]),
+        WallSegment(id="shared-b", start=(3.0, 4.0), end=(3.0, 0.0), height=2.8, thickness=0.16, wall_type="interior", shared_group_id="centre-partition", linked_wall_ids=["shared-a"]),
     ]
     door = Opening(
         id="door",
@@ -76,12 +78,15 @@ with tempfile.TemporaryDirectory(prefix="freecad-smoke-") as temporary:
     quantities = quantity_schedule(scene)
     assert quantities["summary"]["floor_area_m2"] == 24.0
     assert quantities["summary"]["exterior_wall_length_m"] == 20.0
+    assert quantities["summary"]["internal_wall_length_m"] == 4.0, "Shared room-owned wall pairs must count as one physical wall."
     assert quantities["summary"]["doors"] == 1
     assert quantities["furniture"]["sofa"] == 1
 
     tree = model_tree(scene)
     assert tree["type"] == "App::Part"
     assert [node["id"] for node in tree["children"]] == ["rooms", "walls", "openings", "interior"]
+    assert tree["children"][1]["label"] == "Physical Walls (5)"
+    assert len(tree["children"][1]["children"]) == 5
     assert tree["children"][1]["children"][0]["type"] == "Part::Feature"
 
     parameters = scene_parameters(scene)
@@ -110,7 +115,8 @@ with tempfile.TemporaryDirectory(prefix="freecad-smoke-") as temporary:
     assert worker.exists(), "The packaged FreeCAD bridge worker must be present."
     source = worker.read_text(encoding="utf-8")
     assert "Part.makeBox" in source and "Part.Face" in source
+    assert "physical_walls" in source, "Shared room-owned walls must export as one physical solid."
     assert "Quantity Schedule / Bill of Materials" in source
     assert "importIFC" in source and "importDXF" in source and "importSVG" in source
 
-    print("FreeCAD bridge smoke test passed: parametric properties, BRep model tree, quantity schedule, history and file exchange.")
+    print("FreeCAD bridge smoke test passed: parametric properties, deduplicated physical walls, BRep model tree, quantity schedule, history and file exchange.")
