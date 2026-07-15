@@ -1,8 +1,8 @@
 {
   "name": "dream-home-visualizer",
-  "version": "1.6.0",
+  "version": "1.6.1",
   "private": true,
-  "description": "Standalone Windows architectural visualizer with canonical shared portals, persistent first-person navigation, protected controls, PBR interiors and local 4K rendering",
+  "description": "Standalone Windows architectural visualizer with selectable first-person spawning, solid cutaway ground, canonical shared portals, persistent navigation, protected controls, PBR interiors and local 4K rendering",
   "author": "Upenyu Hlangabeza",
   "main": "dist-electron/main.cjs",
   "type": "module",
