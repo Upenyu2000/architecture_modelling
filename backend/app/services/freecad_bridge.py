@@ -163,12 +163,32 @@ def _wall_length(wall: Any) -> float:
     return math.hypot(x2 - x1, z2 - z1)
 
 
+def _physical_wall_key(wall: Any) -> str:
+    shared_group = str(getattr(wall, "shared_group_id", None) or "").strip()
+    if shared_group:
+        return f"shared:{shared_group}"
+    linked = sorted({str(wall.id), *(str(value) for value in getattr(wall, "linked_wall_ids", []) if value)})
+    return "linked:" + "|".join(linked) if len(linked) > 1 else f"wall:{wall.id}"
+
+
+def physical_walls(scene: SceneManifest) -> list[Any]:
+    """Return one physical wall for each shared room-owned wall cluster."""
+    selected: dict[str, Any] = {}
+    for wall in scene.walls:
+        key = _physical_wall_key(wall)
+        current = selected.get(key)
+        if current is None or _wall_length(wall) > _wall_length(current):
+            selected[key] = wall
+    return list(selected.values())
+
+
 def quantity_schedule(scene: SceneManifest) -> dict[str, Any]:
     room_area = sum(float(room.area_m2) for room in scene.rooms)
-    exterior_length = sum(_wall_length(wall) for wall in scene.walls if wall.wall_type == "exterior")
-    internal_length = sum(_wall_length(wall) for wall in scene.walls if wall.wall_type != "exterior")
-    gross_wall_area = sum(_wall_length(wall) * float(wall.height) for wall in scene.walls)
-    wall_volume = sum(_wall_length(wall) * float(wall.height) * float(wall.thickness) for wall in scene.walls)
+    walls = physical_walls(scene)
+    exterior_length = sum(_wall_length(wall) for wall in walls if wall.wall_type == "exterior")
+    internal_length = sum(_wall_length(wall) for wall in walls if wall.wall_type != "exterior")
+    gross_wall_area = sum(_wall_length(wall) * float(wall.height) for wall in walls)
+    wall_volume = sum(_wall_length(wall) * float(wall.height) * float(wall.thickness) for wall in walls)
     opening_area = sum(float(opening.width) * float(opening.height) for opening in scene.openings)
     window_types = {"window", "fixed_window", "casement_window", "double_casement_window", "glider_window", "garden_window", "bay_window", "bow_window", "double_hung_window", "vertical_sliding_window", "horizontal_sliding_window"}
     windows = sum(1 for opening in scene.openings if opening.opening_type in window_types)
@@ -244,7 +264,7 @@ def model_tree(scene: SceneManifest) -> dict[str, Any]:
             },
             {
                 "id": "walls",
-                "label": f"Walls ({len(scene.walls)})",
+                "label": f"Physical Walls ({len(physical_walls(scene))})",
                 "type": "App::DocumentObjectGroup",
                 "children": [
                     {
@@ -259,7 +279,7 @@ def model_tree(scene: SceneManifest) -> dict[str, Any]:
                             "shared_group_id": wall.shared_group_id,
                         },
                     }
-                    for wall in scene.walls
+                    for wall in physical_walls(scene)
                 ],
             },
             {
@@ -306,8 +326,8 @@ def model_tree(scene: SceneManifest) -> dict[str, Any]:
 
 
 def scene_parameters(scene: SceneManifest) -> dict[str, Any]:
-    thicknesses = [float(wall.thickness) for wall in scene.walls]
-    default_thickness = sum(thicknesses) / len(thicknesses) if thicknesses else 0.16
+    thicknesses = [round(float(wall.thickness), 4) for wall in physical_walls(scene)]
+    default_thickness = Counter(thicknesses).most_common(1)[0][0] if thicknesses else 0.16
     return {
         "wall_height_m": round(float(scene.wall_height_m), 3),
         "default_wall_thickness_m": round(default_thickness, 3),
