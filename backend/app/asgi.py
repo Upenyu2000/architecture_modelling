@@ -8,6 +8,7 @@ from .architecture_api import router as architecture_router
 from .opening_api import router as opening_router
 from .interior_api import router as interior_router
 from .presentation_api import router as presentation_router
+from .freecad_api import router as freecad_router
 from .services.rendering_v15 import blender_render as detailed_blender_render
 from .services.strict_geometry import (
     add_room_guarded,
@@ -15,8 +16,7 @@ from .services.strict_geometry import (
     update_room_geometry_guarded,
 )
 
-
-APP_VERSION = "2.0.0"
+APP_VERSION = "2.1.0"
 app = main_module.app
 app.version = APP_VERSION
 main_module.APP_VERSION = APP_VERSION
@@ -47,3 +47,5 @@ if not _has_route("/api/v1/projects/{project_id}/furniture"):
     app.include_router(interior_router)
 if not _has_route("/api/v1/projects/{project_id}/presentation-renders"):
     app.include_router(presentation_router)
+if not _has_route("/api/v1/freecad/status"):
+    app.include_router(freecad_router)
