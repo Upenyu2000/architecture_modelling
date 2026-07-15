@@ -11,27 +11,39 @@ const openingEditor = readFileSync(new URL('../src/renderer/components/OpeningEd
 const upload = readFileSync(new URL('../src/renderer/components/UploadPanel.tsx', import.meta.url), 'utf8');
 const presentationStudio = readFileSync(new URL('../src/renderer/components/PresentationStudio.tsx', import.meta.url), 'utf8');
 const presentationConstants = readFileSync(new URL('../src/renderer/lib/presentation.ts', import.meta.url), 'utf8');
+const freecadWorkbench = readFileSync(new URL('../src/renderer/components/FreeCADWorkbench.tsx', import.meta.url), 'utf8');
 const runtimeStyles = readFileSync(new URL('../src/renderer/runtime-1.5.4.css', import.meta.url), 'utf8');
 const spawnStyles = readFileSync(new URL('../src/renderer/runtime-1.6.1.css', import.meta.url), 'utf8');
 const roomifyStyles = readFileSync(new URL('../src/renderer/roomify-2.0.css', import.meta.url), 'utf8');
+const freecadStyles = readFileSync(new URL('../src/renderer/freecad-2.1.css', import.meta.url), 'utf8');
 const standaloneStyles = readFileSync(new URL('../src/renderer/standalone-layout-1.5.5.css', import.meta.url), 'utf8');
 const openingService = readFileSync(new URL('../backend/app/services/openings.py', import.meta.url), 'utf8');
 const sharedPortalService = readFileSync(new URL('../backend/app/services/shared_portals.py', import.meta.url), 'utf8');
 const presentationService = readFileSync(new URL('../backend/app/services/presentation.py', import.meta.url), 'utf8');
 const presentationApi = readFileSync(new URL('../backend/app/presentation_api.py', import.meta.url), 'utf8');
 const presentationRenderer = readFileSync(new URL('../backend/app/blender/generate_presentation.py', import.meta.url), 'utf8');
+const freecadApi = readFileSync(new URL('../backend/app/freecad_api.py', import.meta.url), 'utf8');
+const freecadBridge = readFileSync(new URL('../backend/app/services/freecad_bridge.py', import.meta.url), 'utf8');
+const freecadWorker = readFileSync(new URL('../backend/app/freecad/bridge_worker.py', import.meta.url), 'utf8');
 
 function assert(condition, message) {
   if (!condition) throw new Error(message);
 }
 
-assert(packageJson.version === '2.0.0', 'Package and installer version must be 2.0.0.');
-assert(packageJson.scripts['prepare:runtime'].includes('prepare-v200-runtime.mjs'), 'The 2.0 runtime preparer must be active.');
-assert(app.includes('<span>Roomify Studio 2.0</span>'), 'The visible application release label must be Roomify Studio 2.0.');
+assert(packageJson.version === '2.1.0', 'Package and installer version must be 2.1.0.');
+assert(packageJson.scripts['prepare:runtime'].includes('prepare-v210-runtime.mjs'), 'The 2.1 runtime preparer must be active.');
+assert(app.includes('<span>Roomify CAD Studio 2.1</span>'), 'The visible application release label must be Roomify CAD Studio 2.1.');
 assert(app.includes("./components/PresentationStudio"), 'The Roomify presentation studio must be imported at runtime.');
 assert(app.includes('<PresentationStudio project={project} disabled={busy} />'), 'The dual-render studio must be visible in the main workspace.');
-assert(main.includes("./roomify-2.0.css"), 'The Roomify-inspired visual design stylesheet must load last.');
+assert(app.includes("./components/FreeCADWorkbench"), 'The FreeCAD workbench must be imported at runtime.');
+assert(app.includes('<FreeCADWorkbench project={project} disabled={busy} onProjectChange={setProject} />'), 'The FreeCAD workbench must be visible in the main workspace.');
+assert(main.includes("./roomify-2.0.css"), 'The Roomify-inspired visual design stylesheet must load.');
+assert(main.includes("./freecad-2.1.css"), 'The FreeCAD workbench stylesheet must load last.');
 assert(api.includes('/presentation-renders'), 'The renderer API must expose dual presentation generation.');
+assert(api.includes('/freecad/status'), 'The renderer API must expose FreeCAD discovery.');
+assert(api.includes('/freecad/export'), 'The renderer API must expose parametric CAD export.');
+assert(api.includes('/freecad/import'), 'The renderer API must expose CAD/BIM import.');
+assert(api.includes('/freecad/undo') && api.includes('/freecad/redo'), 'The renderer API must expose parametric history controls.');
 assert(presentationStudio.includes('Top-down layout'), 'Top-down render selection is missing.');
 assert(presentationStudio.includes('Eye-level interior'), 'Eye-level perspective render selection is missing.');
 assert(presentationStudio.includes('Download presentation ZIP'), 'Presentation bundle export is missing.');
@@ -49,6 +61,24 @@ assert(presentationService.includes('source_text_excluded_from_render'), 'Text r
 assert(presentationRenderer.includes('PresentationTopDownCamera'), 'Orthographic top-down camera is missing.');
 assert(presentationRenderer.includes('PresentationEyeLevelCamera'), 'Eye-level interior camera is missing.');
 assert(presentationRenderer.includes('procedural_material'), 'Procedural PBR texture generation is missing.');
+assert(freecadWorkbench.includes('Parametric properties'), 'FreeCAD property editing is missing.');
+assert(freecadWorkbench.includes('Quantity schedule'), 'FreeCAD bill-of-material quantities are missing.');
+assert(freecadWorkbench.includes('Parametric model tree'), 'FreeCAD object tree is missing.');
+assert(freecadWorkbench.includes('Open in FreeCAD'), 'FreeCAD desktop handoff is missing.');
+assert(freecadWorkbench.includes('FCStd, STEP, IGES, BRep, IFC, DXF, SVG, STL, OBJ'), 'CAD/BIM format exchange UI is incomplete.');
+assert(freecadStyles.includes('.freecad-model-tree'), 'FreeCAD object-tree styling is missing.');
+assert(freecadStyles.includes('.freecad-quantity-grid'), 'FreeCAD quantity styling is missing.');
+assert(freecadApi.includes('/freecad/model-tree'), 'Backend FreeCAD model-tree route is missing.');
+assert(freecadApi.includes('/freecad/quantities'), 'Backend FreeCAD quantity route is missing.');
+assert(freecadApi.includes('/freecad/parameters'), 'Backend FreeCAD parameter route is missing.');
+assert(freecadApi.includes('/freecad/open'), 'Backend FreeCAD desktop launch route is missing.');
+assert(freecadBridge.includes('find_freecad_cmd'), 'FreeCAD command discovery is missing.');
+assert(freecadBridge.includes('record_history'), 'Parametric undo/redo history is missing.');
+assert(freecadBridge.includes('quantity_schedule'), 'Quantity schedule generation is missing.');
+assert(freecadWorker.includes('Part.makeBox'), 'Open CASCADE wall and furniture solids are missing.');
+assert(freecadWorker.includes('Part.Face'), 'Open CASCADE room slab creation is missing.');
+assert(freecadWorker.includes('Quantity Schedule / Bill of Materials'), 'FCStd spreadsheet quantity schedule is missing.');
+assert(freecadWorker.includes('importIFC') && freecadWorker.includes('importDXF') && freecadWorker.includes('importSVG'), 'Optional BIM and 2D exchange adapters are missing.');
 assert(electronMain.includes("path.join(appRoot, 'backend', '.venv', 'Scripts', 'python.exe')"), 'Windows development must discover the project backend virtual environment automatically.');
 assert(electronMain.includes('configuredPython || (fs.existsSync(projectPython) ? projectPython : systemPython)'), 'Development Python selection must prefer DREAMHOME_PYTHON, then the project virtual environment, then the system interpreter.');
 assert(!/<PerspectiveCamera[^>]*\bposition=/.test(scene), 'Walkthrough camera must not receive a spawn position prop.');
@@ -70,4 +100,4 @@ assert(runtimeStyles.includes('.walkthrough-active canvas'), 'First-person input
 assert(spawnStyles.includes('.walkthrough-spawn-controls'), 'First-person spawn control styling is missing.');
 assert(standaloneStyles.includes('contain: layout paint style'), 'Independent renderer paint containment is missing.');
 
-console.log('UI stability smoke test passed: Roomify Studio 2.0, 19 styles, dual photoreal presentation renders, text-free geometry, dining optimisation, drag-and-drop uploads, automatic project Python discovery, selectable spawning and stable portals.');
+console.log('UI stability smoke test passed: Roomify CAD Studio 2.1, FreeCAD parametric BRep and BIM exchange, model history, quantity schedules, 19 styles, dual photoreal renders, text-free geometry, dining optimisation, drag-and-drop uploads, selectable spawning and stable portals.');
