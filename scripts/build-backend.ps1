@@ -42,6 +42,8 @@ try {
     if ($LASTEXITCODE -ne 0) { throw "Image-derived plan-boundary smoke test failed." }
     & $Python -m tests.smoke_interiors
     if ($LASTEXITCODE -ne 0) { throw "Interior design smoke test failed." }
+    & $Python -m tests.smoke_presentation
+    if ($LASTEXITCODE -ne 0) { throw "Architectural presentation preparation smoke test failed." }
 } finally {
     Pop-Location
 }
@@ -65,6 +67,7 @@ try {
         --hidden-import app.architecture_api `
         --hidden-import app.opening_api `
         --hidden-import app.interior_api `
+        --hidden-import app.presentation_api `
         --hidden-import app.services.architecture `
         --hidden-import app.services.openings `
         --hidden-import app.services.shared_portals `
@@ -73,6 +76,8 @@ try {
         --hidden-import app.services.opening_symbols `
         --hidden-import app.services.furniture_detection `
         --hidden-import app.services.rendering_v15 `
+        --hidden-import app.services.rendering_v20 `
+        --hidden-import app.services.presentation `
         --hidden-import app.services.segmentation `
         --hidden-import app.services.training_data `
         --hidden-import app.services.drawings `
@@ -119,8 +124,8 @@ try {
             $Response = Invoke-WebRequest -UseBasicParsing -Uri "http://127.0.0.1:$TestPort/health" -TimeoutSec 2
             if ($Response.StatusCode -eq 200) {
                 $Payload = $Response.Content | ConvertFrom-Json
-                if ($Payload.version -ne "1.6.1") {
-                    throw "Packaged backend reported version $($Payload.version), expected 1.6.1."
+                if ($Payload.version -ne "2.0.0") {
+                    throw "Packaged backend reported version $($Payload.version), expected 2.0.0."
                 }
                 $Healthy = $true
                 break
@@ -147,5 +152,5 @@ if (-not $Healthy) {
 
 Remove-Item -Recurse -Force $TestData -ErrorAction SilentlyContinue
 Remove-Item -Force $StdOut, $StdErr -ErrorAction SilentlyContinue
-Write-Host "Packaged backend health check passed with version 1.6.1."
+Write-Host "Packaged backend health check passed with version 2.0.0."
 Write-Host "Backend built at backend\dist\dreamhome-ai.exe"
