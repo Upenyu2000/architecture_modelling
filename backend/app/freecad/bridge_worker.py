@@ -92,6 +92,32 @@ def opening_links_to_wall(opening: dict[str, Any], wall_id: str) -> bool:
     return wall_id in set(str(item) for item in linked if item)
 
 
+def physical_wall_key(wall: dict[str, Any]) -> str:
+    shared_group = str(wall.get("shared_group_id") or "").strip()
+    if shared_group:
+        return f"shared:{shared_group}"
+    linked = sorted({str(wall.get("id") or ""), *(str(value) for value in wall.get("linked_wall_ids") or [] if value)})
+    return "linked:" + "|".join(linked) if len(linked) > 1 else f"wall:{wall.get('id', '')}"
+
+
+def physical_walls(walls: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    selected: dict[str, dict[str, Any]] = {}
+    for wall in walls:
+        key = physical_wall_key(wall)
+        x1, z1 = (float(value) for value in wall.get("start", (0.0, 0.0)))
+        x2, z2 = (float(value) for value in wall.get("end", (0.0, 0.0)))
+        length = math.hypot(x2 - x1, z2 - z1)
+        current = selected.get(key)
+        if current is None:
+            selected[key] = wall
+            continue
+        cx1, cz1 = (float(value) for value in current.get("start", (0.0, 0.0)))
+        cx2, cz2 = (float(value) for value in current.get("end", (0.0, 0.0)))
+        if length > math.hypot(cx2 - cx1, cz2 - cz1):
+            selected[key] = wall
+    return list(selected.values())
+
+
 def wall_shape(Part, App, wall: dict[str, Any], openings: list[dict[str, Any]]):
     x1, z1 = (float(value) for value in wall.get("start", (0.0, 0.0)))
     x2, z2 = (float(value) for value in wall.get("end", (0.0, 0.0)))
@@ -218,7 +244,7 @@ def build_document(payload: dict[str, Any]):
         objects.append(obj)
 
     openings = list(scene.get("openings") or [])
-    for wall in scene.get("walls", []):
+    for wall in physical_walls(list(scene.get("walls") or [])):
         shape = wall_shape(Part, App, wall, openings)
         if shape is None:
             continue
