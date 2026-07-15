@@ -1,0 +1,45 @@
+name: Validate CAD and Presentation
+
+on:
+  workflow_dispatch:
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - name: Install Python dependencies
+        run: python -m pip install --upgrade pip && python -m pip install -r backend/requirements.txt
+      - name: Validate Python and Blender scripts
+        run: python -m compileall -q backend training
+      - name: Validate FreeCAD bridge
+        working-directory: backend
+        run: python -m tests.smoke_freecad_bridge
+      - name: Validate architectural presentation
+        working-directory: backend
+        run: python -m tests.smoke_presentation
+      - name: Validate portals and exterior collision
+        working-directory: backend
+        run: python -m tests.smoke_shared_portals && python -m tests.smoke_exterior_space
+      - name: Install Node dependencies
+        run: npm install
+      - name: Generate runtime and type check
+        run: npm run typecheck
+      - name: Validate UI integration
+        run: npm run test:ui-stability
