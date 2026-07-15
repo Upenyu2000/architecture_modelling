@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 
 const app = readFileSync(new URL('../src/renderer/App.tsx', import.meta.url), 'utf8');
 const main = readFileSync(new URL('../src/renderer/main.tsx', import.meta.url), 'utf8');
+const electronMain = readFileSync(new URL('../src/main/main.ts', import.meta.url), 'utf8');
 const packageJson = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
 const scene = readFileSync(new URL('../src/renderer/components/ScenePreview.v161.tsx', import.meta.url), 'utf8');
 const editor = readFileSync(new URL('../src/renderer/components/RoomLayoutEditor.v154.tsx', import.meta.url), 'utf8');
@@ -22,6 +23,8 @@ assert(app.includes("./components/ScenePreview.v161"), 'The application must imp
 assert(app.includes('guarded opening mutations'), 'Opening requests must use the application busy/error guard.');
 assert(main.includes("./runtime-1.6.1.css"), 'The first-person spawn control stylesheet must be loaded.');
 assert(main.includes("./standalone-layout-1.5.5.css"), 'The protected standalone layout guard must load after earlier viewport styles.');
+assert(electronMain.includes("path.join(appRoot, 'backend', '.venv', 'Scripts', 'python.exe')"), 'Windows development must discover the project backend virtual environment automatically.');
+assert(electronMain.includes('configuredPython || (fs.existsSync(projectPython) ? projectPython : systemPython)'), 'Development Python selection must prefer DREAMHOME_PYTHON, then the project virtual environment, then the system interpreter.');
 assert(!/<PerspectiveCamera[^>]*\bposition=/.test(scene), 'Walkthrough camera must not receive a spawn position prop.');
 assert(scene.includes('playerPositionRef={playerPositionRef}'), 'Walkthrough position must live above the rendered scene so view changes cannot reset it.');
 assert(scene.includes('spawnAppliedRevisionRef={spawnAppliedRevisionRef}'), 'Applied spawn requests must persist across first-person remounts.');
@@ -66,4 +69,4 @@ assert(/background:\s*linear-gradient/.test(standaloneStyles), 'The opaque stand
 assert(standaloneStyles.includes('@media (max-width: 1060px)'), 'The early non-overlap stacking breakpoint is missing.');
 assert(standaloneStyles.includes('.three-view-wrap canvas'), 'WebGL canvas width containment is missing.');
 
-console.log('UI stability smoke test passed: version 1.6.1, selectable first-person spawning, solid cutaway ground, canonical shared portals, persistent navigation, strict exterior collision, panning, PBR and protected layout');
+console.log('UI stability smoke test passed: version 1.6.1, automatic project Python discovery, selectable first-person spawning, solid cutaway ground, canonical shared portals, persistent navigation, strict exterior collision, panning, PBR and protected layout');
