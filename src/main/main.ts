@@ -33,7 +33,12 @@ function resolveBackendCommand(): { command: string; args: string[]; cwd: string
     return { command: executable, args: [], cwd: path.dirname(executable) };
   }
 
-  const python = process.env.DREAMHOME_PYTHON || (process.platform === 'win32' ? 'python' : 'python3');
+  const configuredPython = process.env.DREAMHOME_PYTHON?.trim();
+  const projectPython = process.platform === 'win32'
+    ? path.join(appRoot, 'backend', '.venv', 'Scripts', 'python.exe')
+    : path.join(appRoot, 'backend', '.venv', 'bin', 'python');
+  const systemPython = process.platform === 'win32' ? 'python' : 'python3';
+  const python = configuredPython || (fs.existsSync(projectPython) ? projectPython : systemPython);
   return {
     command: python,
     args: ['-m', 'uvicorn', 'backend.app.asgi:app', '--host', BACKEND_HOST, '--port', String(BACKEND_PORT)],
