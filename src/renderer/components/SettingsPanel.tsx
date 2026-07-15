@@ -23,8 +23,24 @@ export function SettingsPanel() {
 
   return (
     <details className="settings-panel">
-      <summary><Cpu size={17} /> AI, OCR, training and render settings</summary>
+      <summary><Cpu size={17} /> CAD, BIM, AI, OCR, training and render settings</summary>
       <div className="settings-grid">
+        <label>
+          FreeCAD command-line executable
+          <div className="input-with-button">
+            <input value={String(settings.freecad_cmd_executable ?? '')} onChange={(e) => update('freecad_cmd_executable', e.target.value)} placeholder="Auto-detect or choose FreeCADCmd.exe" />
+            <button onClick={() => void browseFile('freecad_cmd_executable', 'FreeCAD command line', ['exe'])}><FolderOpen size={16} /></button>
+          </div>
+          <small>Runs the local Open CASCADE parametric kernel for FCStd, STEP, IGES, BRep, IFC, DXF, SVG, STL and OBJ workflows.</small>
+        </label>
+        <label>
+          FreeCAD desktop executable
+          <div className="input-with-button">
+            <input value={String(settings.freecad_gui_executable ?? '')} onChange={(e) => update('freecad_gui_executable', e.target.value)} placeholder="Auto-detect or choose FreeCAD.exe" />
+            <button onClick={() => void browseFile('freecad_gui_executable', 'FreeCAD desktop', ['exe'])}><FolderOpen size={16} /></button>
+          </div>
+          <small>Used only when you explicitly choose Open in FreeCAD from the CAD & BIM workbench.</small>
+        </label>
         <label>
           Local floor-plan segmentation model
           <div className="input-with-button">

@@ -1,109 +1,126 @@
-# Dream Home Visualizer 1.6.1 — Standalone Windows App
+# Roomify CAD Studio 2.1 — Dream Home Visualizer
 
-A local-first Electron + Python desktop application that converts 2D floor plans into editable free-form architectural geometry, compiles synchronized cutaway and first-person 3D environments, maps PBR materials, creates HD/4K Blender output, generates walkthrough videos, and converts uploaded 3D building models back into measured 2D drawing sets.
+A local-first Electron, FastAPI, Three.js, Blender and FreeCAD desktop application for turning 2D floor plans into editable architectural geometry, parametric CAD/BIM documents, interactive walkthroughs and photorealistic presentation renders.
 
-## Version 1.6.1 walkthrough and cutaway upgrade
+## Version 2.1: FreeCAD CAD and BIM workbench
 
-- First Person now lets the user choose the plan default, select any detected room centre, or enter an exact X/Z spawn position before pressing **Spawn here**.
-- Spawn positions are checked against room boundaries and collision geometry before the camera is moved, while applied spawn requests remain stable across view remounts.
-- Cutaway room floors are solid 8 cm extruded slabs rather than zero-thickness faces, preventing the floor from disappearing at oblique camera angles.
-- A dedicated ground surface is rendered beneath and around the building in Cutaway view.
-- A shared boundary remains two independent room-owned walls while one canonical portal entity controls both wall cut-outs.
-- The opening editor recognises `wall_ids`, highlights every wall owned by a shared portal, and no longer labels a valid shared door as unattached.
-- Repeated clicks are guarded in both the editor and application request layer, preventing duplicate door submissions.
-- The first-person position is stored above the rendered scene so door interaction, FOV changes, room transitions, and switching view modes do not reset the player.
-- Portal collision validates both distance along the doorway and perpendicular distance through the wall, keeping exterior white space non-traversable.
-- The default first-person collision radius is 0.14 m while the default FOV is 100 degrees with a 70–120 degree adjustment range.
+Roomify CAD Studio now connects to a locally installed FreeCAD through `FreeCADCmd.exe` and, when requested, `FreeCAD.exe`.
 
-## What works in the repository
+The integration adds:
 
-- Windows NSIS installer built with Electron Builder.
-- PNG, JPG and PDF floor-plan ingestion.
-- Clean structural centre-line extraction that suppresses text, furniture symbols and duplicate wall edges.
-- Optional local ONNX semantic segmentation for walls, rooms, doors and windows.
-- Free-form room polygons with up to 64 editable vertices.
-- Add, remove and drag individual room points; create rhombus, trapezoid, L-shaped, octagonal and irregular rooms.
-- Room move/scale controls, configurable snapping and an aligned plan-reference layer.
-- Validation that rejects self-crossing or overlapping polygon edges.
-- Shared, diagonal and exterior walls rebuilt from confirmed room boundaries.
-- One canonical door or passage across touching independent walls, with synchronized cut-outs and room links.
-- Clean, Balanced and Detailed deterministic detection modes plus minimum wall-length control.
-- Structure/model overlay showing the geometry used by the 3D scene.
-- User-controlled scale, wall height, cutaway height and material properties.
-- Flooring, wall, kitchen, living-room and bathroom upload tabs.
-- Deterministic asset placement with a live Three.js cutaway and top-plan scene.
-- Solid room-shaped floor slabs and a visible ground apron in Cutaway view.
-- Door/window gaps cut into wall geometry rather than painted over solid walls.
-- First-person pointer-lock movement with acceleration, running, head motion, persistent position and door-aware collision.
-- Room-centre and exact-coordinate first-person spawn selection with collision validation.
-- Adjustable 70–120 degree first-person FOV and reduced player collision radius for narrow corridors.
-- PBR roughness/metalness plus optional diffuse and normal maps in Three.js.
-- Opening-aware Blender wall generation, box/triplanar texture projection and window bounce lighting.
-- GLB, OBJ, STL and PLY building-model uploads for reverse 3D-to-2D conversion.
-- Floor-plan sectioning at a configurable cut height and Y-up or Z-up selection.
-- PNG, SVG and DXF floor plans, front/side elevations, dimensions and a ZIP drawing package.
-- Persistent named save slots for uploads, geometry, drawings, renders and walkthroughs.
-- Reset control that clears the active project without deleting save slots.
-- Local project storage under the Windows application-data directory.
-- Fast technical PNG renders at preview, 1080p and 4K.
-- Blender 4.2+ background rendering and 5–30 second MP4 walkthroughs.
-- Optional command adapter for local TRELLIS or Hunyuan3D environments.
-- Optional private remote endpoint adapter; remote upload is disabled by default.
-- Corrected-project export to a local supervised training workspace.
-- Licence-aware dataset preparation, PyTorch U-Net training, validation metrics and ONNX export.
-- GitHub Actions validation for Python, Blender scripts, TypeScript, backend packaging and Windows installer creation.
+- An in-app FreeCAD connection status and executable selector.
+- A parametric building model generated from the verified room, wall, door and window geometry.
+- Open CASCADE solid and BRep construction for room slabs, walls and Boolean opening cuts.
+- Editable wall height, wall thickness, ceiling height and cutaway height properties.
+- Recompute, undo and redo controls backed by persistent scene snapshots.
+- A hierarchical model tree for rooms, walls, openings, furniture and fixtures.
+- Quantity and bill-of-material data for floor area, wall lengths, wall area, wall volume, openings and interior objects.
+- Native editable `FCStd` output.
+- STEP, IGES, BRep, STL and OBJ export.
+- IFC, DXF and SVG import/export when the corresponding FreeCAD modules are available.
+- FCStd, STEP, IGES, BRep, IFC, DXF, SVG, STL, OBJ, DAE, OFF and 3MF import.
+- Conversion of imported CAD/BIM files into an editable FCStd document and an OBJ model usable by the existing drawing and rendering workflow.
+- An explicit **Open in FreeCAD** action for continuing the model in the full FreeCAD desktop application.
 
-## Floor-plan AI training
+The generated FCStd document contains a Building container, grouped architectural objects, custom properties and a Quantity Schedule spreadsheet.
 
-The normal Windows installer does not bundle PyTorch or third-party datasets. Training is isolated under `training/` so model development does not make the desktop installer several gigabytes.
+## Roomify presentation workflow
 
-The training pipeline supports:
+The application also provides:
 
-- User-owned local seed plans.
-- The CC BY 4.0 Figshare synthetic floor-plan release.
-- Authorised COCO exports such as Floor Plans 500.
-- Vector/graph JSON with arbitrary room polygons.
-- Explicitly gated research sources whose licences are missing, non-commercial or require separate verification.
+- PNG, JPG and PDF floor-plan upload with drag-and-drop progress.
+- Deterministic wall, room, door and window extraction.
+- Editable free-form room polygons and shared-wall portals.
+- Furniture and fixture placement with uploaded reference assets.
+- A live Three.js plan, cutaway and first-person walkthrough.
+- Selectable room-centre or exact-coordinate first-person spawning.
+- Solid room slabs, exterior collision boundaries and interactive doors.
+- Nineteen architectural styles, including Modern, Scandinavian, Industrial, Mediterranean, Victorian and Neo-classical.
+- A text-free orthographic top-down presentation render.
+- A coordinated eye-level interior render from inside the building.
+- Dining-room circulation optimisation.
+- Preview, 1080p and 4K Blender output plus MP4 walkthroughs.
+- Named save slots and local project storage.
 
-It produces a five-class semantic model:
+## What runs inside the app
 
-```text
-background, wall, room, door, window
-```
+The app directly exposes the FreeCAD capabilities that support the architectural workflow:
 
-The resulting `floorplan-segmentation.onnx` file can be selected under **AI, OCR, training and render settings**. See [`training/README.md`](training/README.md) and [`training/datasets.json`](training/datasets.json).
+- Parametric properties and recomputation.
+- Open CASCADE solid/BRep generation.
+- Model hierarchy and persistent history.
+- Quantity schedules.
+- Common CAD, mesh, BIM and 2D exchange formats.
+- FreeCAD desktop handoff.
 
-After manually correcting a plan in **Edit rooms**, use **Add corrected plan to training set** to write the source image, class mask and authoritative scene JSON into the configured training workspace. This action requires confirmation that the plan may lawfully be used for training.
+Specialist FreeCAD workbenches such as FEM, CAM/CNC, robotics, point-cloud processing, assemblies and advanced NURBS editing are not reimplemented in the Electron interface. Export or open the FCStd document in FreeCAD to continue with those specialist tools.
 
-## Important production boundary
+## Requirements
 
-The deterministic geometry pipeline and optional ONNX inference are self-contained. Large generative models such as TRELLIS, Hunyuan3D, Stable Diffusion/ControlNet, Real-ESRGAN and video diffusion are not embedded because their weights, CUDA requirements and licences make a normal Windows installer impractical. The app exposes local-command and private-endpoint adapters and never uploads a home plan without explicit consent.
+Required for local development:
 
-The application does not silently redistribute third-party datasets. FloorPlanCAD is non-commercial, some Hugging Face resources do not declare a licence, and MSD/ResPlan release terms must be retained and verified before a checkpoint is used commercially. The source registry enforces these boundaries.
+- Windows 10 or 11.
+- Node.js 22 or newer.
+- Python 3.11 or newer.
+- Git.
 
-The reverse drawing workflow uses deterministic mesh cross-sections rather than image generation. GLB is the preferred single-file format. OBJ models that depend on separate MTL or texture files can still be sectioned; those materials are not required for technical drawings.
+Optional tools:
 
-This is an architectural visualisation and data-preparation tool, not a substitute for a licensed architect, structural engineer, building surveyor or code-compliance review.
+- FreeCAD 1.x for parametric CAD/BIM import, export and desktop editing.
+- Blender 4.2 or newer for photorealistic rendering and video walkthroughs.
+- Tesseract OCR for room labels and dimensions.
+- A compatible ONNX segmentation model for learned floor-plan parsing.
+
+FreeCAD and Blender are external applications and are not redistributed inside the installer. The app auto-detects common Windows installation paths. Custom paths can be selected under **CAD, BIM, AI, OCR, training and render settings**.
 
 ## Run locally on Windows
-
-Install Node.js 22+, Python 3.11+, Git, and optionally Blender 4.2 or newer. In PowerShell:
 
 ```powershell
 git clone https://github.com/Upenyu2000/architecture_modelling.git
 cd architecture_modelling
+git switch agent/release-2.1-freecad-cad-bim
+
 Set-ExecutionPolicy -Scope Process Bypass
 python -m venv backend\.venv
-backend\.venv\Scripts\Activate.ps1
-python -m pip install --upgrade pip
+.\backend\.venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip setuptools wheel
 pip install -r backend\requirements.txt
+
 npm install
+npm run prepare:runtime
 npm run typecheck
+npm run test:ui-stability
+npm run test:freecad
+npm run test:presentation
 npm run test:portal-stability
 npm run dev
 ```
 
-The Electron window starts after Vite, the Electron main process and the local Python API are ready. Blender is optional for development; without it, use the technical renderer.
+If FreeCAD is installed outside a standard path, open Settings and select:
+
+```text
+FreeCADCmd.exe
+FreeCAD.exe
+```
+
+The command-line executable performs CAD/BIM operations. The desktop executable is used only after pressing **Open in FreeCAD**.
+
+## FreeCAD file exchange
+
+| Format | Import | Export | Notes |
+|---|---:|---:|---|
+| FCStd | Yes | Yes | Preferred editable parametric document |
+| STEP / STP | Yes | Yes | Precise solid exchange |
+| IGES / IGS | Yes | Yes | Surface and solid exchange |
+| BRep / BRP | Yes | Yes | Open CASCADE boundary representation |
+| IFC | Yes* | Yes* | Requires FreeCAD IFC support |
+| DXF | Yes* | Yes* | Requires FreeCAD DXF support |
+| SVG | Yes* | Yes* | Requires FreeCAD SVG support |
+| STL | Yes | Yes | Tessellated manufacturing/printing mesh |
+| OBJ | Yes | Yes | Mesh exchange and app preview conversion |
+| DAE, OFF, 3MF | Yes | — | Converted to FCStd and OBJ |
+
+`*` Availability is detected from the installed FreeCAD modules and unsupported choices are hidden from export controls.
 
 ## Build the Windows installer
 
@@ -112,25 +129,27 @@ Set-ExecutionPolicy -Scope Process Bypass
 .\scripts\build-windows.ps1
 ```
 
-The build runs the geometry, opening, shared-portal, exterior-space and interior smoke tests, packages the Python backend, validates the backend health endpoint as version 1.6.1, builds Electron, and creates the installer in `release/`.
+The build validates geometry, portals, interiors, presentation rendering preparation and the FreeCAD bridge, packages the FastAPI backend, verifies the packaged `/health` endpoint as version 2.1.0, builds Electron and creates the NSIS installer in `release/`.
 
-## Useful validation commands
+## Validation commands
 
 ```powershell
 npm run prepare:runtime
 npm run typecheck
 npm run test:ui-stability
+npm run test:freecad
+npm run test:presentation
 npm run test:portal-stability
 npm run build
 ```
 
-## Recommended production model suite
+The FreeCAD smoke test does not require FreeCAD to be installed. It verifies parametric properties, model-tree generation, quantity calculations, persistent undo/redo history, format declarations and the packaged headless bridge. Actual CAD conversion requires a local FreeCAD installation.
 
-| Stage | Default in this build | Optional production model |
-|---|---|---|
-| Floor-plan parsing | OpenCV vectors plus optional local 5-class ONNX segmentation | Mask2Former/SegFormer trained on licence-compatible architectural masks |
-| Free-form topology | Shapely polygon validation, shared-edge reconstruction and editable vertices | Graph neural topology correction trained on verified vector datasets |
-| Text and scale | Manual calibration plus optional Tesseract OCR | PaddleOCR/Surya and a dimension-line parser |
-| Furniture reconstruction | Deterministic proxy geometry | TRELLIS or Hunyuan3D in a dedicated CUDA environment |
-| Scene assembly | Three.js game viewport plus Blender Python | Blender Geometry Nodes/Cycles or Unity/Unreal integration |
-| 3D-to-2D drawings | Trimesh cross-sections with PNG/SVG/DXF | BIM/IFC semantic extraction for construction documents |
+## Production boundaries
+
+- Source floor-plan text is not projected into presentation renders.
+- The deterministic scene remains the authority for geometry.
+- CAD exports are design data, not signed construction documents.
+- Structural analysis, building-code compliance and professional certification require qualified specialists.
+- Remote image processing remains disabled unless the user explicitly configures and enables a private endpoint.
+- FreeCAD, Blender and third-party model weights retain their own licences and installation requirements.

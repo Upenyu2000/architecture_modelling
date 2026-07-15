@@ -12,6 +12,8 @@ PROJECTS_DIR = DATA_DIR / "projects"
 SETTINGS_FILE = DATA_DIR / "settings.json"
 
 DEFAULT_SETTINGS: dict[str, Any] = {
+    "freecad_cmd_executable": "",
+    "freecad_gui_executable": "",
     "blender_executable": "",
     "tesseract_executable": "",
     "image_to_3d_command": "",
