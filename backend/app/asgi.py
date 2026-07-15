@@ -15,7 +15,7 @@ from .services.strict_geometry import (
 )
 
 
-APP_VERSION = "1.5.5"
+APP_VERSION = "1.6.1"
 app = main_module.app
 app.version = APP_VERSION
 main_module.APP_VERSION = APP_VERSION
@@ -30,7 +30,7 @@ def _has_route(path: str) -> bool:
 
 
 # Replace the legacy health route so development and packaged builds report the same release.
-app.router.routes = [route for route in app.router.routes if getattr(route, "path", None) != "/health"]
+app.router.routes = [route for route in app.routes if getattr(route, "path", None) != "/health"]
 
 
 @app.get("/health")

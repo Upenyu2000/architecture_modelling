@@ -1,6 +1,19 @@
-# Dream Home Visualizer — Standalone Windows App
+# Dream Home Visualizer 1.6.1 — Standalone Windows App
 
 A local-first Electron + Python desktop application that converts 2D floor plans into editable free-form architectural geometry, compiles synchronized cutaway and first-person 3D environments, maps PBR materials, creates HD/4K Blender output, generates walkthrough videos, and converts uploaded 3D building models back into measured 2D drawing sets.
+
+## Version 1.6.1 walkthrough and cutaway upgrade
+
+- First Person now lets the user choose the plan default, select any detected room centre, or enter an exact X/Z spawn position before pressing **Spawn here**.
+- Spawn positions are checked against room boundaries and collision geometry before the camera is moved, while applied spawn requests remain stable across view remounts.
+- Cutaway room floors are solid 8 cm extruded slabs rather than zero-thickness faces, preventing the floor from disappearing at oblique camera angles.
+- A dedicated ground surface is rendered beneath and around the building in Cutaway view.
+- A shared boundary remains two independent room-owned walls while one canonical portal entity controls both wall cut-outs.
+- The opening editor recognises `wall_ids`, highlights every wall owned by a shared portal, and no longer labels a valid shared door as unattached.
+- Repeated clicks are guarded in both the editor and application request layer, preventing duplicate door submissions.
+- The first-person position is stored above the rendered scene so door interaction, FOV changes, room transitions, and switching view modes do not reset the player.
+- Portal collision validates both distance along the doorway and perpendicular distance through the wall, keeping exterior white space non-traversable.
+- The default first-person collision radius is 0.14 m while the default FOV is 100 degrees with a 70–120 degree adjustment range.
 
 ## What works in the repository
 
@@ -13,13 +26,17 @@ A local-first Electron + Python desktop application that converts 2D floor plans
 - Room move/scale controls, configurable snapping and an aligned plan-reference layer.
 - Validation that rejects self-crossing or overlapping polygon edges.
 - Shared, diagonal and exterior walls rebuilt from confirmed room boundaries.
+- One canonical door or passage across touching independent walls, with synchronized cut-outs and room links.
 - Clean, Balanced and Detailed deterministic detection modes plus minimum wall-length control.
 - Structure/model overlay showing the geometry used by the 3D scene.
 - User-controlled scale, wall height, cutaway height and material properties.
 - Flooring, wall, kitchen, living-room and bathroom upload tabs.
 - Deterministic asset placement with a live Three.js cutaway and top-plan scene.
+- Solid room-shaped floor slabs and a visible ground apron in Cutaway view.
 - Door/window gaps cut into wall geometry rather than painted over solid walls.
-- First-person pointer-lock movement with acceleration, running, head motion and door-aware collision.
+- First-person pointer-lock movement with acceleration, running, head motion, persistent position and door-aware collision.
+- Room-centre and exact-coordinate first-person spawn selection with collision validation.
+- Adjustable 70–120 degree first-person FOV and reduced player collision radius for narrow corridors.
 - PBR roughness/metalness plus optional diffuse and normal maps in Three.js.
 - Opening-aware Blender wall generation, box/triplanar texture projection and window bounce lighting.
 - GLB, OBJ, STL and PLY building-model uploads for reverse 3D-to-2D conversion.
@@ -68,25 +85,43 @@ The reverse drawing workflow uses deterministic mesh cross-sections rather than 
 
 This is an architectural visualisation and data-preparation tool, not a substitute for a licensed architect, structural engineer, building surveyor or code-compliance review.
 
-## Build on Windows
+## Run locally on Windows
 
-Install Node.js 22+, Python 3.11+, and optionally Blender 4.2 or newer. Then run:
+Install Node.js 22+, Python 3.11+, Git, and optionally Blender 4.2 or newer. In PowerShell:
+
+```powershell
+git clone https://github.com/Upenyu2000/architecture_modelling.git
+cd architecture_modelling
+Set-ExecutionPolicy -Scope Process Bypass
+python -m venv backend\.venv
+backend\.venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
+pip install -r backend\requirements.txt
+npm install
+npm run typecheck
+npm run test:portal-stability
+npm run dev
+```
+
+The Electron window starts after Vite, the Electron main process and the local Python API are ready. Blender is optional for development; without it, use the technical renderer.
+
+## Build the Windows installer
 
 ```powershell
 Set-ExecutionPolicy -Scope Process Bypass
 .\scripts\build-windows.ps1
 ```
 
-The installer is created in `release/`.
+The build runs the geometry, opening, shared-portal, exterior-space and interior smoke tests, packages the Python backend, validates the backend health endpoint as version 1.6.1, builds Electron, and creates the installer in `release/`.
 
-## Development
+## Useful validation commands
 
 ```powershell
-python -m venv backend\.venv
-backend\.venv\Scripts\Activate.ps1
-pip install -r backend\requirements.txt
-npm install
-npm run dev
+npm run prepare:runtime
+npm run typecheck
+npm run test:ui-stability
+npm run test:portal-stability
+npm run build
 ```
 
 ## Recommended production model suite
@@ -99,8 +134,3 @@ npm run dev
 | Furniture reconstruction | Deterministic proxy geometry | TRELLIS or Hunyuan3D in a dedicated CUDA environment |
 | Scene assembly | Three.js game viewport plus Blender Python | Blender Geometry Nodes/Cycles or Unity/Unreal integration |
 | 3D-to-2D drawings | Trimesh cross-sections with PNG/SVG/DXF | BIM/IFC semantic extraction for construction documents |
-| Texture mapping | PBR material parameters, user maps and box/triplanar projection | Material synthesis with reviewed, licensed texture datasets |
-| Upscaling | Native 1080p/4K render target | Real-ESRGAN or latent upscaler |
-| Walkthrough | Collision-aware live FPS and Blender camera-path MP4 | Video diffusion only as post-processing, never as geometry authority |
-
-See [Architecture](docs/ARCHITECTURE.md), [API](docs/API.md), [AI model setup](docs/MODEL_SETUP.md), and [Training](training/README.md).

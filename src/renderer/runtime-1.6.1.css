@@ -1,0 +1,51 @@
+/* 1.6.1 first-person spawn selection controls */
+.walkthrough-settings {
+  max-height: calc(100% - 24px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.walkthrough-spawn-controls {
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid #315441;
+  border-radius: 10px;
+  background: rgba(6, 17, 11, 0.92);
+}
+
+.spawn-coordinate-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 8px;
+}
+
+.walkthrough-spawn-controls input,
+.walkthrough-spawn-controls select {
+  min-width: 0;
+  padding: 8px 9px;
+}
+
+.spawn-here-button {
+  width: 100%;
+  margin: 0 !important;
+}
+
+.spawn-status {
+  display: block;
+  line-height: 1.35;
+}
+
+.spawn-status.valid {
+  color: #8ddaae;
+}
+
+.spawn-status.invalid {
+  color: #f0b0a8;
+}
+
+@media (max-width: 720px) {
+  .spawn-coordinate-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
