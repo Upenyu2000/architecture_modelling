@@ -29,7 +29,7 @@ app = app.replace(
   "from './components/ScenePreview.v161';",
 );
 app = app.replace(
-  /<span>Arch-AI Convert 1\.(?:5|6(?:\.1)?)<\/span>/,
+  /<span>(?:Arch-AI Convert 1\.(?:5|6(?:\.1)?)|Roomify Studio 2\.[01])<\/span>/,
   '<span>Arch-AI Convert 1.6.1</span>',
 );
 
