@@ -1,4 +1,5 @@
-import { FormEvent, ReactNode, useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import type { FormEvent, ReactNode } from 'react';
 import { CheckCircle2, CloudCog, RefreshCcw, Server, Settings2, ShieldCheck, WifiOff, X } from 'lucide-react';
 import {
   api,
