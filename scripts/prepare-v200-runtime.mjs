@@ -24,7 +24,7 @@ if (!app.includes("./components/PresentationStudio")) {
 }
 
 app = app.replace(
-  /<span>(?:Arch-AI Convert 1\.6\.1|Roomify Studio 2\.0)<\/span>/,
+  /<span>(?:Arch-AI Convert 1\.6\.1|Roomify Studio 2\.[01])<\/span>/,
   '<span>Roomify Studio 2.0</span>',
 );
 
