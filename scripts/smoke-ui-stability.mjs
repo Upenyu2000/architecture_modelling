@@ -25,16 +25,18 @@ function assert(condition, message) {
   if (!condition) throw new Error(message);
 }
 
-assert(packageJson.version === '2.0.0', 'Package and installer version must be 2.0.0.');
-assert(packageJson.scripts['prepare:runtime'].includes('prepare-v200-runtime.mjs'), 'The 2.0 runtime preparer must be active.');
-assert(app.includes('<span>Roomify Studio 2.0</span>'), 'The visible application release label must be Roomify Studio 2.0.');
+assert(packageJson.version === '2.1.0', 'Package and installer version must be 2.1.0.');
+assert(packageJson.scripts['prepare:runtime'].includes('prepare-v210-runtime.mjs'), 'The 2.1 mobile runtime preparer must be active.');
+assert(app.includes('<span>Roomify Studio 2.1</span>'), 'The visible application release label must be Roomify Studio 2.1.');
+assert(app.includes('Android + Windows'), 'The cross-platform application badge is missing.');
 assert(app.includes("./components/PresentationStudio"), 'The Roomify presentation studio must be imported at runtime.');
 assert(app.includes('<PresentationStudio project={project} disabled={busy} />'), 'The dual-render studio must be visible in the main workspace.');
-assert(main.includes("./roomify-2.0.css"), 'The Roomify-inspired visual design stylesheet must load last.');
+assert(main.includes("./roomify-2.0.css"), 'The Roomify-inspired visual design stylesheet must load.');
+assert(main.includes("./mobile-2.1.css"), 'The Android touch stylesheet must load last.');
 assert(api.includes('/presentation-renders'), 'The renderer API must expose dual presentation generation.');
 assert(presentationStudio.includes('Top-down layout'), 'Top-down render selection is missing.');
 assert(presentationStudio.includes('Eye-level interior'), 'Eye-level perspective render selection is missing.');
-assert(presentationStudio.includes('Download presentation ZIP'), 'Presentation bundle export is missing.');
+assert(presentationStudio.includes('Save or share presentation ZIP'), 'Native-compatible presentation bundle export is missing.');
 assert(presentationStudio.includes('Dining circulation'), 'Dining flow status is missing.');
 assert((presentationConstants.match(/value: '/g) ?? []).length === 19, 'All 19 requested architectural styles must be selectable.');
 assert(presentationConstants.includes('Do not include source-plan text'), 'The geometry render prompt must explicitly remove source text.');
@@ -70,4 +72,4 @@ assert(runtimeStyles.includes('.walkthrough-active canvas'), 'First-person input
 assert(spawnStyles.includes('.walkthrough-spawn-controls'), 'First-person spawn control styling is missing.');
 assert(standaloneStyles.includes('contain: layout paint style'), 'Independent renderer paint containment is missing.');
 
-console.log('UI stability smoke test passed: Roomify Studio 2.0, 19 styles, dual photoreal presentation renders, text-free geometry, dining optimisation, drag-and-drop uploads, automatic project Python discovery, selectable spawning and stable portals.');
+console.log('UI stability smoke test passed: Roomify Studio 2.1 for Android and Windows, 19 styles, dual photoreal presentation renders, native sharing, text-free geometry, dining optimisation, selectable spawning and stable portals.');
