@@ -3,7 +3,8 @@ import {
   AlertCircle, Camera, CheckCircle2, Download, Image as ImageIcon, Layers3,
   Maximize2, RefreshCcw, Sparkles,
 } from 'lucide-react';
-import { absoluteUrl, api } from '../lib/api';
+import { absoluteUrl, api, apiAuthHeaders } from '../lib/api';
+import { downloadOrShare } from '../lib/mobile-platform';
 import {
   DESIGN_STYLES, type DesignStyle, type PresentationEngine, type RenderQuality, styleLabel,
 } from '../lib/presentation';
@@ -92,14 +93,22 @@ export function PresentationStudio({ project, disabled = false }: Props) {
     }
   };
 
-  const download = (url: string | undefined, suffix: string) => {
+  const download = async (
+    url: string | undefined,
+    suffix: string,
+    extension: 'png' | 'zip' = 'png',
+  ) => {
     if (!url) return;
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `${project?.name || 'dream-home'}-${suffix}.png`;
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
+    setError('');
+    try {
+      await downloadOrShare(
+        url,
+        `${project?.name || 'dream-home'}-${suffix}.${extension}`,
+        apiAuthHeaders(),
+      );
+    } catch (downloadError) {
+      setError(downloadError instanceof Error ? downloadError.message : String(downloadError));
+    }
   };
 
   return (
@@ -194,10 +203,14 @@ export function PresentationStudio({ project, disabled = false }: Props) {
 
         {topDownUrl || perspectiveUrl ? (
           <div className="presentation-output-actions">
-            <Button variant="secondary" size="sm" disabled={!activeRenderUrl} onClick={() => download(activeRenderUrl, activeView)}>
-              <Download size={15} /> Download current PNG
+            <Button variant="secondary" size="sm" disabled={!activeRenderUrl} onClick={() => void download(activeRenderUrl, activeView)}>
+              <Download size={15} /> Save or share current PNG
             </Button>
-            {bundleUrl ? <a className="btn btn--outline btn--sm" href={bundleUrl} download><Download size={15} /> Download presentation ZIP</a> : null}
+            {bundleUrl ? (
+              <Button variant="outline" size="sm" onClick={() => void download(bundleUrl, 'presentation', 'zip')}>
+                <Download size={15} /> Save or share presentation ZIP
+              </Button>
+            ) : null}
             {activeRenderUrl ? <a className="btn btn--ghost btn--sm" href={activeRenderUrl} target="_blank" rel="noreferrer"><Maximize2 size={15} /> Open full size</a> : null}
           </div>
         ) : null}
