@@ -18,7 +18,7 @@ export function AndroidBackButton() {
       if (disposed) {
         void handle.remove();
       } else {
-        removeListener = handle.remove;
+        removeListener = () => handle.remove();
       }
     });
 
