@@ -3,6 +3,8 @@ package-lock.json
 dist/
 dist-electron/
 release/
+release-android/
+android/
 backend/.venv/
 backend/.venv-build/
 backend/build/
