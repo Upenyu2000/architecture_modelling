@@ -1,6 +1,7 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';
+import { MobileBackendGate } from './components/MobileBackendGate';
 import { RoomEditorDoubleClick } from './components/RoomEditorDoubleClick';
 import './styles.css';
 import './room-editor.css';
@@ -12,11 +13,14 @@ import './runtime-1.5.4.css';
 import './runtime-1.6.1.css';
 import './standalone-layout-1.5.5.css';
 import './roomify-2.0.css';
+import './mobile-2.1.css';
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    <RoomEditorDoubleClick>
-      <App />
-    </RoomEditorDoubleClick>
+    <MobileBackendGate>
+      <RoomEditorDoubleClick>
+        <App />
+      </RoomEditorDoubleClick>
+    </MobileBackendGate>
   </React.StrictMode>,
 );
