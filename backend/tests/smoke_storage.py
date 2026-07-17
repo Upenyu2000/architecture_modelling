@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import io
+import json
 import os
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -9,7 +10,7 @@ from tempfile import TemporaryDirectory
 from starlette.datastructures import UploadFile
 
 from app import storage
-from app.storage import UploadStorageError, project_dir, save_upload
+from app.storage import UploadStorageError, project_dir, save_upload, write_json
 
 
 async def _save(
@@ -45,6 +46,13 @@ async def run_checks() -> None:
             assert prefixed.parent == destination.parent
             assert "/" not in prefixed.name and "\\" not in prefixed.name
             assert prefixed.read_bytes() == b"model"
+
+            metadata_path = project_dir("project") / "working" / "scene.json"
+            write_json(metadata_path, {"revision": 1, "valid": True})
+            assert json.loads(metadata_path.read_text(encoding="utf-8")) == {"revision": 1, "valid": True}
+            write_json(metadata_path, {"revision": 2, "valid": True})
+            assert json.loads(metadata_path.read_text(encoding="utf-8"))["revision"] == 2
+            assert not list(metadata_path.parent.glob("*.tmp")), "Atomic JSON writes must clean temporary files."
 
             try:
                 await _save("../outside", "escape.bin", b"escape")
@@ -86,7 +94,7 @@ async def run_checks() -> None:
 
 def main() -> None:
     asyncio.run(run_checks())
-    print("Storage smoke test passed: collision-safe candidates, project/folder/prefix traversal protection, safe filenames, atomic replacement, empty-file rejection, size limits and temporary-file cleanup.")
+    print("Storage smoke test passed: atomic metadata, collision-safe candidates, traversal protection, safe filenames, empty-file rejection, size limits and temporary-file cleanup.")
 
 
 if __name__ == "__main__":
