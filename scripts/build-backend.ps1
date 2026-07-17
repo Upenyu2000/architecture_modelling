@@ -44,6 +44,8 @@ try {
     if ($LASTEXITCODE -ne 0) { throw "Interior design smoke test failed." }
     & $Python -m tests.smoke_presentation
     if ($LASTEXITCODE -ne 0) { throw "Architectural presentation preparation smoke test failed." }
+    & $Python -m tests.smoke_storage
+    if ($LASTEXITCODE -ne 0) { throw "Atomic upload storage smoke test failed." }
 } finally {
     Pop-Location
 }
