@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import shutil
 import uuid
 from pathlib import Path
+
 from fastapi import UploadFile
 
 from .config import PROJECTS_DIR, ensure_directories
@@ -13,6 +15,24 @@ from .models import Project, SaveSlotSummary, utc_now
 SAFE_NAME = re.compile(r"[^a-zA-Z0-9._-]+")
 SLOT_ID = re.compile(r"^[a-f0-9]{32}$")
 ACTIVE_FOLDERS = ("uploads", "assets", "outputs", "working")
+DEFAULT_MAX_UPLOAD_BYTES = 250 * 1024 * 1024
+UPLOAD_CHUNK_BYTES = 1024 * 1024
+
+
+class UploadStorageError(RuntimeError):
+    def __init__(self, message: str, status_code: int = 422):
+        super().__init__(message)
+        self.status_code = status_code
+
+
+def max_upload_bytes() -> int:
+    configured = os.getenv("DREAMHOME_MAX_UPLOAD_BYTES", "").strip()
+    if not configured:
+        return DEFAULT_MAX_UPLOAD_BYTES
+    try:
+        return max(1024 * 1024, int(configured))
+    except ValueError:
+        return DEFAULT_MAX_UPLOAD_BYTES
 
 
 def project_dir(project_id: str) -> Path:
@@ -65,11 +85,34 @@ async def save_upload(project_id: str, upload: UploadFile, folder: str, prefix: 
     destination_dir.mkdir(parents=True, exist_ok=True)
     filename = f"{prefix}{safe_filename(upload.filename or 'upload.bin')}"
     destination = destination_dir / filename
-    with destination.open("wb") as output:
-        while chunk := await upload.read(1024 * 1024):
-            output.write(chunk)
-    await upload.close()
-    return destination
+    temporary = destination.with_name(f".{destination.name}.{uuid.uuid4().hex}.upload")
+    limit = max_upload_bytes()
+    declared_size = getattr(upload, "size", None)
+    if isinstance(declared_size, int) and declared_size > limit:
+        await upload.close()
+        raise UploadStorageError(f"Upload exceeds the {limit // (1024 * 1024)} MB size limit.", 413)
+
+    written = 0
+    try:
+        with temporary.open("xb") as output:
+            while chunk := await upload.read(UPLOAD_CHUNK_BYTES):
+                written += len(chunk)
+                if written > limit:
+                    raise UploadStorageError(f"Upload exceeds the {limit // (1024 * 1024)} MB size limit.", 413)
+                output.write(chunk)
+            output.flush()
+            os.fsync(output.fileno())
+        if written == 0:
+            raise UploadStorageError("The uploaded file is empty.", 422)
+        temporary.replace(destination)
+        return destination
+    except UploadStorageError:
+        raise
+    except OSError as exc:
+        raise UploadStorageError(f"The upload could not be saved: {exc}", 500) from exc
+    finally:
+        temporary.unlink(missing_ok=True)
+        await upload.close()
 
 
 def write_json(path: Path, payload: dict) -> None:
