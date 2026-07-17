@@ -28,10 +28,17 @@ app = app.replace(
   /from '\.\/components\/ScenePreview(?:\.v154|\.v160|\.v161)?';/,
   "from './components/ScenePreview.v161';",
 );
-app = app.replace(
-  /<span>Arch-AI Convert 1\.(?:5|6(?:\.1)?)<\/span>/,
-  '<span>Arch-AI Convert 1.6.1</span>',
-);
+
+// This compatibility generator is also called by later releases. Preserve a
+// newer product label instead of downgrading it or failing during a second
+// prepare/build pass.
+const hasNewerProductLabel = /<span>Roomify Studio \d+(?:\.\d+)*<\/span>/.test(app);
+if (!hasNewerProductLabel) {
+  app = app.replace(
+    /<span>Arch-AI Convert 1\.(?:5|6(?:\.1)?)<\/span>/,
+    '<span>Arch-AI Convert 1.6.1</span>',
+  );
+}
 
 if (!app.includes('guarded opening mutations')) {
   const current = `  const addOpening = async (payload: OpeningPayload) => {
@@ -87,9 +94,11 @@ if (!app.includes('guarded opening mutations')) {
   app = app.replace(current, guarded);
 }
 
-if (!app.includes('<span>Arch-AI Convert 1.6.1</span>')) {
-  throw new Error('1.6.1 app patch could not update the visible release label.');
+const hasCompatibleReleaseLabel = app.includes('<span>Arch-AI Convert 1.6.1</span>')
+  || /<span>Roomify Studio \d+(?:\.\d+)*<\/span>/.test(app);
+if (!hasCompatibleReleaseLabel) {
+  throw new Error('1.6.1 compatibility patch could not find a supported visible release label.');
 }
 
 await writeFile(appPath, app, 'utf8');
-console.log('Prepared and activated Dream Home Visualizer 1.6.1 runtime components.');
+console.log('Prepared shared 1.6.1 runtime compatibility components without overwriting newer release branding.');
