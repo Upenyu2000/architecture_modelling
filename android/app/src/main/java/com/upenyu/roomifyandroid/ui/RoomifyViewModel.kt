@@ -60,6 +60,7 @@ class RoomifyViewModel(application: Application) : AndroidViewModel(application)
                 selectedRoomId = scene?.rooms?.firstOrNull()?.id,
                 planWidthM = scene?.widthM ?: 14.0,
                 styleId = style,
+                showSourceImage = source != null,
                 isBusy = false,
                 status = if (scene == null) "Choose a floor-plan image or import authoritative JSON." else "Recovered the local JSON scene.",
                 warnings = scene?.warnings.orEmpty(),
@@ -92,6 +93,8 @@ class RoomifyViewModel(application: Application) : AndroidViewModel(application)
                     sourceBitmap = result.normalizedBitmap,
                     selectedRoomId = result.scene.rooms.firstOrNull()?.id,
                     styleId = "modern",
+                    renderMode = RenderMode.PLAN,
+                    showSourceImage = true,
                     isBusy = false,
                     status = "Image converted to JSON: ${result.scene.rooms.size} rooms and ${result.scene.walls.size} walls.",
                     error = null,
@@ -106,24 +109,29 @@ class RoomifyViewModel(application: Application) : AndroidViewModel(application)
         if (_state.value.isBusy) return
         viewModelScope.launch {
             mutateBusy("Validating floor-plan JSON…")
-            runCatching { sceneRepository.importFrom(uri) }
-                .onSuccess { scene ->
-                    val style = StyleCatalog.styles.firstOrNull {
-                        it.label.equals(scene.materials.paletteName, ignoreCase = true)
-                    }?.id ?: "modern"
-                    _state.value = _state.value.copy(
-                        scene = scene,
-                        selectedRoomId = scene.rooms.firstOrNull()?.id,
-                        planWidthM = scene.widthM,
-                        styleId = style,
-                        isBusy = false,
-                        status = "Imported authoritative JSON with ${scene.rooms.size} rooms.",
-                        error = null,
-                        warnings = scene.warnings,
-                        hasUnsavedChanges = false,
-                    )
-                }
-                .onFailure(::showFailure)
+            runCatching {
+                val scene = sceneRepository.importFrom(uri)
+                projectStore.clearSource()
+                scene
+            }.onSuccess { scene ->
+                val style = StyleCatalog.styles.firstOrNull {
+                    it.label.equals(scene.materials.paletteName, ignoreCase = true)
+                }?.id ?: "modern"
+                _state.value = _state.value.copy(
+                    scene = scene,
+                    sourceBitmap = null,
+                    selectedRoomId = scene.rooms.firstOrNull()?.id,
+                    planWidthM = scene.widthM,
+                    styleId = style,
+                    renderMode = RenderMode.PLAN,
+                    showSourceImage = false,
+                    isBusy = false,
+                    status = "Imported authoritative JSON with ${scene.rooms.size} rooms.",
+                    error = null,
+                    warnings = scene.warnings,
+                    hasUnsavedChanges = false,
+                )
+            }.onFailure(::showFailure)
         }
     }
 
@@ -149,16 +157,21 @@ class RoomifyViewModel(application: Application) : AndroidViewModel(application)
         viewModelScope.launch {
             mutateBusy("Loading sample JSON…")
             runCatching {
-                getApplication<Application>().assets.open("sample_scene.json").bufferedReader().use { reader ->
+                val scene = getApplication<Application>().assets.open("sample_scene.json").bufferedReader().use { reader ->
                     SceneJsonCodec.decode(reader.readText())
                 }
-            }.onSuccess { scene ->
+                projectStore.clearSource()
                 sceneRepository.saveCurrent(scene)
+                scene
+            }.onSuccess { scene ->
                 _state.value = _state.value.copy(
                     scene = scene,
+                    sourceBitmap = null,
                     selectedRoomId = scene.rooms.firstOrNull()?.id,
                     planWidthM = scene.widthM,
                     styleId = "modern",
+                    renderMode = RenderMode.PLAN,
+                    showSourceImage = false,
                     isBusy = false,
                     status = "Sample JSON loaded.",
                     error = null,
@@ -216,7 +229,7 @@ class RoomifyViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun setShowSourceImage(show: Boolean) {
-        _state.value = _state.value.copy(showSourceImage = show)
+        _state.value = _state.value.copy(showSourceImage = show && _state.value.sourceBitmap != null)
     }
 
     fun resetProject() {
