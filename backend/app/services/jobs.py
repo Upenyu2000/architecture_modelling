@@ -8,16 +8,42 @@ from typing import Any, Callable
 
 from ..models import Job, utc_now
 
+
 JOBS: dict[str, Job] = {}
 LOCK = threading.Lock()
 EXECUTOR = ThreadPoolExecutor(max_workers=2, thread_name_prefix="dreamhome-job")
+MAX_RETAINED_TERMINAL_JOBS = 200
+TERMINAL_STATUSES = {"completed", "failed"}
+ACTIVE_STATUSES = {"queued", "running"}
+
+
+def _prune_terminal_jobs_locked() -> None:
+    terminal = sorted(
+        (job for job in JOBS.values() if job.status in TERMINAL_STATUSES),
+        key=lambda item: item.updated_at,
+    )
+    overflow = len(terminal) - MAX_RETAINED_TERMINAL_JOBS
+    for job in terminal[:max(0, overflow)]:
+        JOBS.pop(job.id, None)
 
 
 def create_job(project_id: str, kind: str) -> Job:
     job = Job(id=str(uuid.uuid4()), project_id=project_id, kind=kind)
     with LOCK:
+        _prune_terminal_jobs_locked()
         JOBS[job.id] = job
     return job
+
+
+def find_active_job(project_id: str, kind: str) -> Job | None:
+    with LOCK:
+        matching = [
+            job for job in JOBS.values()
+            if job.project_id == project_id and job.kind == kind and job.status in ACTIVE_STATUSES
+        ]
+        if not matching:
+            return None
+        return max(matching, key=lambda item: item.updated_at)
 
 
 def get_job(job_id: str) -> Job:
@@ -29,12 +55,16 @@ def get_job(job_id: str) -> Job:
 
 def update_job(job_id: str, progress: int, message: str, **changes) -> None:
     with LOCK:
-        job = JOBS[job_id]
+        job = JOBS.get(job_id)
+        if job is None:
+            raise KeyError(job_id)
         job.progress = max(0, min(100, progress))
         job.message = message
         job.updated_at = utc_now()
         for key, value in changes.items():
             setattr(job, key, value)
+        if job.status in TERMINAL_STATUSES:
+            _prune_terminal_jobs_locked()
 
 
 def submit(
@@ -58,8 +88,14 @@ def submit(
                 output_path=str(output_path),
                 output_url=output_url,
                 metadata=metadata,
+                error=None,
             )
         except Exception as exc:
             update_job(job.id, 100, "Failed", status="failed", error=str(exc), message=str(exc))
-    EXECUTOR.submit(runner)
+
+    try:
+        EXECUTOR.submit(runner)
+    except Exception as exc:
+        update_job(job.id, 100, "Failed to queue", status="failed", error=str(exc), message=str(exc))
+        raise
     return job
