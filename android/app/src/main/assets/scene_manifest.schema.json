@@ -1,0 +1,271 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://upenyu2000.github.io/architecture_modelling/schemas/roomify.scene.v1.json",
+  "title": "Roomify Scene Manifest",
+  "description": "Portable, JSON-first architectural geometry shared by the Android and desktop applications.",
+  "type": "object",
+  "required": [
+    "project_id",
+    "width_m",
+    "depth_m",
+    "wall_height_m",
+    "walls",
+    "rooms"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "roomify.scene.v1",
+      "default": "roomify.scene.v1"
+    },
+    "project_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 160
+    },
+    "width_m": {
+      "type": "number",
+      "minimum": 1,
+      "maximum": 500
+    },
+    "depth_m": {
+      "type": "number",
+      "minimum": 1,
+      "maximum": 500
+    },
+    "wall_height_m": {
+      "type": "number",
+      "minimum": 1.8,
+      "maximum": 12
+    },
+    "walls": {
+      "type": "array",
+      "maxItems": 20000,
+      "items": { "$ref": "#/$defs/wall" }
+    },
+    "rooms": {
+      "type": "array",
+      "maxItems": 5000,
+      "items": { "$ref": "#/$defs/room" }
+    },
+    "assets": {
+      "type": "array",
+      "maxItems": 10000,
+      "items": { "$ref": "#/$defs/asset" },
+      "default": []
+    },
+    "camera_path": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/vector3" },
+      "default": []
+    },
+    "openings": {
+      "type": "array",
+      "maxItems": 10000,
+      "items": { "$ref": "#/$defs/opening" },
+      "default": []
+    },
+    "fixtures_and_furniture": {
+      "type": "array",
+      "maxItems": 20000,
+      "items": { "$ref": "#/$defs/object" },
+      "default": []
+    },
+    "materials": {
+      "$ref": "#/$defs/materials"
+    },
+    "project_metadata": {
+      "$ref": "#/$defs/metadata"
+    },
+    "first_person_start": {
+      "anyOf": [
+        { "$ref": "#/$defs/vector3" },
+        { "type": "null" }
+      ]
+    },
+    "collision_segments": {
+      "type": "array",
+      "items": {
+        "type": "array",
+        "minItems": 2,
+        "maxItems": 2,
+        "items": { "$ref": "#/$defs/vector2" }
+      },
+      "default": []
+    },
+    "ceiling_height_m": { "type": "number", "minimum": 1.8, "maximum": 12 },
+    "cutaway_height_m": { "type": "number", "minimum": 0, "maximum": 12 },
+    "wall_detection_mode": { "type": "string" },
+    "plan_type": { "type": "string" },
+    "layout_mode": { "type": "string" },
+    "warnings": {
+      "type": "array",
+      "items": { "type": "string" },
+      "default": []
+    }
+  },
+  "$defs": {
+    "vector2": {
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 2,
+      "prefixItems": [
+        { "type": "number" },
+        { "type": "number" }
+      ],
+      "items": false
+    },
+    "vector3": {
+      "type": "array",
+      "minItems": 3,
+      "maxItems": 3,
+      "prefixItems": [
+        { "type": "number" },
+        { "type": "number" },
+        { "type": "number" }
+      ],
+      "items": false
+    },
+    "wall": {
+      "type": "object",
+      "required": ["id", "start", "end", "height"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "start": { "$ref": "#/$defs/vector2" },
+        "end": { "$ref": "#/$defs/vector2" },
+        "height": { "type": "number", "minimum": 1.8, "maximum": 12 },
+        "thickness": { "type": "number", "exclusiveMinimum": 0, "maximum": 3 },
+        "wall_type": { "type": "string" },
+        "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+        "owner_room_id": { "type": ["string", "null"] },
+        "linked_wall_ids": { "type": "array", "items": { "type": "string" } },
+        "shared_group_id": { "type": ["string", "null"] },
+        "render_offset": { "$ref": "#/$defs/vector2" },
+        "render_thickness": { "type": ["number", "null"] }
+      }
+    },
+    "room": {
+      "type": "object",
+      "required": ["id", "name", "polygon", "area_m2", "centroid"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "name": { "type": "string", "minLength": 1, "maxLength": 80 },
+        "polygon": {
+          "type": "array",
+          "minItems": 3,
+          "items": { "$ref": "#/$defs/vector2" }
+        },
+        "area_m2": { "type": "number", "exclusiveMinimum": 0 },
+        "centroid": { "$ref": "#/$defs/vector2" },
+        "room_type": { "type": "string" },
+        "width_m": { "type": ["number", "null"] },
+        "depth_m": { "type": ["number", "null"] },
+        "extracted_dimension": { "type": ["string", "null"] },
+        "label_confidence": { "type": "number", "minimum": 0, "maximum": 1 }
+      }
+    },
+    "opening": {
+      "type": "object",
+      "required": ["id", "opening_type", "position", "width"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "opening_type": { "type": "string" },
+        "position": { "$ref": "#/$defs/vector2" },
+        "width": { "type": "number", "exclusiveMinimum": 0, "maximum": 30 },
+        "height": { "type": "number", "exclusiveMinimum": 0, "maximum": 12 },
+        "rotation_deg": { "type": "number" },
+        "wall_id": { "type": ["string", "null"] },
+        "wall_ids": { "type": "array", "items": { "type": "string" } },
+        "room_ids": { "type": "array", "items": { "type": "string" } },
+        "portal_id": { "type": ["string", "null"] },
+        "placement_ratio": { "type": ["number", "null"] },
+        "swing_direction": { "type": "string" },
+        "hinge_side": { "type": "string" },
+        "swing_angle_deg": { "type": "number" },
+        "sill_height": { "type": "number" },
+        "interactive": { "type": "boolean" },
+        "default_open": { "type": "boolean" },
+        "source": { "type": "string" },
+        "confidence": { "type": "number", "minimum": 0, "maximum": 1 }
+      }
+    },
+    "asset": {
+      "type": "object",
+      "required": ["id", "category", "slot", "label", "position", "size"],
+      "properties": {
+        "id": { "type": "string" },
+        "category": { "type": "string" },
+        "slot": { "type": "string" },
+        "label": { "type": "string" },
+        "room_id": { "type": ["string", "null"] },
+        "position": { "$ref": "#/$defs/vector3" },
+        "rotation_y": { "type": "number" },
+        "size": { "$ref": "#/$defs/vector3" },
+        "source_url": { "type": ["string", "null"] },
+        "source_path": { "type": ["string", "null"] },
+        "mesh_url": { "type": ["string", "null"] },
+        "mesh_path": { "type": ["string", "null"] },
+        "source": { "type": "string" },
+        "confidence": { "type": "number", "minimum": 0, "maximum": 1 }
+      }
+    },
+    "object": {
+      "type": "object",
+      "required": ["id", "object_type", "asset_id", "category", "coordinates"],
+      "properties": {
+        "id": { "type": "string" },
+        "object_type": { "type": "string" },
+        "asset_id": { "type": "string" },
+        "category": { "type": "string" },
+        "room_id": { "type": ["string", "null"] },
+        "coordinates": { "$ref": "#/$defs/vector3" },
+        "rotation_deg": { "type": "number" },
+        "scale": { "$ref": "#/$defs/vector3" },
+        "size": { "$ref": "#/$defs/vector3" },
+        "source": { "type": "string" },
+        "confidence": { "type": "number", "minimum": 0, "maximum": 1 }
+      }
+    },
+    "material": {
+      "type": "object",
+      "required": ["name", "material_type", "hex_color"],
+      "properties": {
+        "name": { "type": "string" },
+        "material_type": { "type": "string" },
+        "hex_color": { "type": "string", "pattern": "^#[0-9A-Fa-f]{6}$" },
+        "roughness": { "type": "number", "minimum": 0, "maximum": 1 },
+        "metallic": { "type": "number", "minimum": 0, "maximum": 1 },
+        "specular": { "type": "number", "minimum": 0, "maximum": 1 },
+        "texture_url": { "type": ["string", "null"] },
+        "normal_url": { "type": ["string", "null"] },
+        "displacement_url": { "type": ["string", "null"] },
+        "texture_scale": { "type": "number", "exclusiveMinimum": 0 }
+      }
+    },
+    "materials": {
+      "type": "object",
+      "properties": {
+        "palette_name": { "type": "string" },
+        "floor_global": { "$ref": "#/$defs/material" },
+        "walls_global": { "$ref": "#/$defs/material" },
+        "exterior_walls": { "$ref": "#/$defs/material" },
+        "accent": { "$ref": "#/$defs/material" },
+        "fixture_metal": { "$ref": "#/$defs/material" }
+      }
+    },
+    "metadata": {
+      "type": "object",
+      "properties": {
+        "scale_ratio": { "type": "string" },
+        "detected_rooms": { "type": "integer", "minimum": 0 },
+        "detected_openings": { "type": "integer", "minimum": 0 },
+        "detected_objects": { "type": "integer", "minimum": 0 },
+        "parser_version": { "type": "string" },
+        "source_plan_type": { "type": "string" },
+        "structural_confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+        "ocr_status": { "type": "string" },
+        "extracted_labels": { "type": "array", "items": { "type": "string" } }
+      }
+    }
+  }
+}
