@@ -1,7 +1,20 @@
 from __future__ import annotations
 
+from pathlib import Path
+from tempfile import TemporaryDirectory
+
 from app.models import ArchitecturalObject, Opening, ProjectMetadata, RoomShape, SceneManifest, WallSegment
+from app.presentation_api import _remove_failed_outputs
 from app.services.presentation import STYLE_PRESETS, prepare_presentation_scene
+from app.services.rendering_v20 import PNG_SIGNATURE, _validate_png
+
+
+def _expect_runtime_error(callback, message: str) -> None:
+    try:
+        callback()
+    except RuntimeError:
+        return
+    raise AssertionError(message)
 
 
 def main() -> None:
@@ -69,15 +82,22 @@ def main() -> None:
         ),
     )
 
-    payload, metadata = prepare_presentation_scene(scene, "scandinavian", auto_furnish=True, optimise_dining=True)
-
     assert len(STYLE_PRESETS) == 19, "Every requested architectural style must be available."
-    assert payload["materials"]["palette_name"] == "Scandinavian"
-    assert payload["project_metadata"]["extracted_labels"] == []
-    assert payload["render_profile"]["text_policy"] == "geometry_only_no_source_text"
-    assert metadata["text_removed"] is True
+    for style_name, preset in STYLE_PRESETS.items():
+        styled_payload, styled_metadata = prepare_presentation_scene(
+            scene,
+            style_name,
+            auto_furnish=True,
+            optimise_dining=True,
+        )
+        assert styled_payload["materials"]["palette_name"] == preset["label"]
+        assert styled_payload["project_metadata"]["extracted_labels"] == []
+        assert styled_payload["render_profile"]["text_policy"] == "geometry_only_no_source_text"
+        assert styled_metadata["text_removed"] is True
+        assert styled_metadata["perspective_room_id"] == room.id
+
+    payload, metadata = prepare_presentation_scene(scene, "scandinavian", auto_furnish=True, optimise_dining=True)
     assert metadata["dining_adjusted"] is True
-    assert metadata["perspective_room_id"] == room.id
 
     rendered_table = next(item for item in payload["fixtures_and_furniture"] if item["object_type"] == "dining_table")
     assert 1.4 <= rendered_table["coordinates"][0] <= 3.6
@@ -87,7 +107,32 @@ def main() -> None:
     assert "|scandinavian|" in rendered_table["asset_id"]
     assert not any(item["object_type"] == "dining_chair" for item in payload["fixtures_and_furniture"]), "Dining chairs are generated around the optimised table and must not be duplicated."
 
-    print("Presentation smoke test passed: 19 styles, text-free geometry, practical dining flow and an interior camera.")
+    with TemporaryDirectory() as temporary:
+        root = Path(temporary)
+        valid_png = root / "valid.png"
+        valid_png.write_bytes(PNG_SIGNATURE + b"0" * 128)
+        _validate_png(valid_png, "top_down")
+
+        invalid_png = root / "invalid.png"
+        invalid_png.write_bytes(b"not-a-png" * 20)
+        _expect_runtime_error(
+            lambda: _validate_png(invalid_png, "perspective"),
+            "Invalid Blender output must be rejected.",
+        )
+
+        output_dir = root / "presentation-partial"
+        output_dir.mkdir()
+        (output_dir / "partial.png").write_bytes(b"partial")
+        archive = root / "presentation-partial.zip"
+        temporary_archive = root / ".presentation-partial.zip.tmp"
+        archive.write_bytes(b"partial")
+        temporary_archive.write_bytes(b"partial")
+        _remove_failed_outputs(output_dir, archive, temporary_archive)
+        assert not output_dir.exists()
+        assert not archive.exists()
+        assert not temporary_archive.exists()
+
+    print("Presentation smoke test passed: 19 styles, text-free geometry, practical dining flow, interior camera, PNG validation and failed-output cleanup.")
 
 
 if __name__ == "__main__":
