@@ -54,6 +54,19 @@ def save_slots_dir(project_id: str) -> Path:
     return path
 
 
+def _atomic_write_text(path: Path, content: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_name(f".{path.name}.{uuid.uuid4().hex}.tmp")
+    try:
+        with temporary.open("x", encoding="utf-8", newline="\n") as output:
+            output.write(content)
+            output.flush()
+            os.fsync(output.fileno())
+        temporary.replace(path)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
 def create_project(name: str) -> Project:
     ensure_directories()
     project = Project(id=str(uuid.uuid4()), name=name.strip() or "My Dream Home")
@@ -74,9 +87,7 @@ def load_project(project_id: str) -> Project:
 
 def save_project(project: Project) -> Project:
     project.updated_at = utc_now()
-    path = project_file(project.id)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(project.model_dump_json(indent=2), encoding="utf-8")
+    _atomic_write_text(project_file(project.id), project.model_dump_json(indent=2))
     return project
 
 
@@ -151,8 +162,7 @@ async def save_upload(project_id: str, upload: UploadFile, folder: str, prefix: 
 
 
 def write_json(path: Path, payload: dict) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    _atomic_write_text(path, json.dumps(payload, indent=2))
 
 
 def reset_working(project_id: str) -> Path:
@@ -224,7 +234,7 @@ def create_save_slot(project_id: str, name: str) -> SaveSlotSummary:
         else:
             destination.mkdir(parents=True, exist_ok=True)
 
-    (slot_root / "project.json").write_text(project.model_dump_json(indent=2), encoding="utf-8")
+    _atomic_write_text(slot_root / "project.json", project.model_dump_json(indent=2))
     timestamp = utc_now()
     summary = SaveSlotSummary(
         id=slot_id,
@@ -239,7 +249,7 @@ def create_save_slot(project_id: str, name: str) -> SaveSlotSummary:
         has_scene=project.scene is not None,
         has_drawings=project.drawing_set is not None,
     )
-    (slot_root / "slot.json").write_text(summary.model_dump_json(indent=2), encoding="utf-8")
+    _atomic_write_text(slot_root / "slot.json", summary.model_dump_json(indent=2))
     return summary
 
 
