@@ -194,8 +194,9 @@ private fun DrawScope.drawFurniture(item: ArchitecturalObject, viewport: PlanVie
     val width = max(3f, item.size[0].toFloat() * viewport.scale)
     val depth = max(3f, item.size[2].toFloat() * viewport.scale)
     val rect = Rect(center.x - width / 2f, center.y - depth / 2f, center.x + width / 2f, center.y + depth / 2f)
-    drawRect(accent.copy(alpha = 0.24f), rect.topLeft, rect.size)
-    drawRect(accent.copy(alpha = 0.72f), rect.topLeft, rect.size, style = Stroke(1.2f))
+    val color = objectColor(item, accent)
+    drawRect(color.copy(alpha = 0.28f), rect.topLeft, rect.size)
+    drawRect(color.copy(alpha = 0.78f), rect.topLeft, rect.size, style = Stroke(1.2f))
 }
 
 private fun roomPath(room: RoomShape, viewport: PlanViewport): Path = Path().apply {
@@ -261,6 +262,49 @@ private fun DrawScope.drawIsometric(
         drawPath(path, color = if (selected) accentColor else Color(0xFF71717A), style = Stroke(1.1f))
     }
 
+    scene.fixturesAndFurniture
+        .filter { it.coordinates.size >= 3 && it.size.size >= 3 }
+        .sortedBy { it.coordinates[0] + it.coordinates[2] }
+        .forEach { item ->
+            val width = max(0.08, item.size[0])
+            val height = max(0.08, item.size[1])
+            val depth = max(0.08, item.size[2])
+            val cx = item.coordinates[0]
+            val cz = item.coordinates[2]
+            val base = listOf(
+                listOf(cx - width / 2.0, cz - depth / 2.0),
+                listOf(cx + width / 2.0, cz - depth / 2.0),
+                listOf(cx + width / 2.0, cz + depth / 2.0),
+                listOf(cx - width / 2.0, cz + depth / 2.0),
+            )
+            val bottom = base.map { project(it) }
+            val top = base.map { project(it, height) }
+            val color = objectColor(item, accentColor)
+            val rightFace = Path().apply {
+                moveTo(bottom[1].x, bottom[1].y)
+                lineTo(bottom[2].x, bottom[2].y)
+                lineTo(top[2].x, top[2].y)
+                lineTo(top[1].x, top[1].y)
+                close()
+            }
+            val leftFace = Path().apply {
+                moveTo(bottom[2].x, bottom[2].y)
+                lineTo(bottom[3].x, bottom[3].y)
+                lineTo(top[3].x, top[3].y)
+                lineTo(top[2].x, top[2].y)
+                close()
+            }
+            val topFace = Path().apply {
+                moveTo(top[0].x, top[0].y)
+                top.drop(1).forEach { lineTo(it.x, it.y) }
+                close()
+            }
+            drawPath(rightFace, color.blend(Color.Black, 0.24f))
+            drawPath(leftFace, color.blend(Color.Black, 0.12f))
+            drawPath(topFace, color.blend(Color.White, 0.12f))
+            drawPath(topFace, Color(0xFF52525B), style = Stroke(0.8f))
+        }
+
     scene.walls.sortedBy { max(it.start[1], it.end[1]) }.forEach { wall ->
         val bottomStart = project(wall.start)
         val bottomEnd = project(wall.end)
@@ -276,12 +320,43 @@ private fun DrawScope.drawIsometric(
         drawPath(face, if (wall.wallType == "exterior") exteriorColor else wallColor)
         drawPath(face, Color(0xFF52525B), style = Stroke(0.9f))
     }
+
+    scene.openings.forEach { opening ->
+        if (opening.position.size < 2) return@forEach
+        val half = opening.width / 2.0
+        val angle = Math.toRadians(opening.rotationDeg)
+        val dx = cos(angle) * half
+        val dz = sin(angle) * half
+        val start = listOf(opening.position[0] - dx, opening.position[1] - dz)
+        val end = listOf(opening.position[0] + dx, opening.position[1] + dz)
+        val sill = if (opening.openingType == "window") opening.sillHeight else 0.0
+        val openingHeight = min(opening.height, scene.wallHeightM - sill).coerceAtLeast(0.2)
+        val bottomStart = project(start, sill)
+        val bottomEnd = project(end, sill)
+        val topStart = project(start, sill + openingHeight)
+        val topEnd = project(end, sill + openingHeight)
+        val face = Path().apply {
+            moveTo(bottomStart.x, bottomStart.y)
+            lineTo(bottomEnd.x, bottomEnd.y)
+            lineTo(topEnd.x, topEnd.y)
+            lineTo(topStart.x, topStart.y)
+            close()
+        }
+        val color = if (opening.openingType == "window") Color(0xFF93C5FD) else Color(0xFF374151)
+        drawPath(face, color.copy(alpha = 0.94f))
+        drawPath(face, Color(0xFF111827), style = Stroke(0.8f))
+    }
 }
 
 private fun isoPoint(x: Double, z: Double): Offset = Offset(
     ((x - z) * 0.82).toFloat(),
     ((x + z) * 0.41).toFloat(),
 )
+
+private fun objectColor(item: ArchitecturalObject, fallback: Color): Color {
+    val value = Regex("#[0-9A-Fa-f]{6}").find(item.assetId)?.value ?: return fallback
+    return parseColor(value, fallback)
+}
 
 private fun parseColor(value: String, fallback: Color): Color = runCatching {
     Color(android.graphics.Color.parseColor(value))
