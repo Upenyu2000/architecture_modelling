@@ -27,6 +27,16 @@ def _prune_terminal_jobs_locked() -> None:
         JOBS.pop(job.id, None)
 
 
+def _active_job_locked(project_id: str, kind: str) -> Job | None:
+    matching = [
+        job for job in JOBS.values()
+        if job.project_id == project_id and job.kind == kind and job.status in ACTIVE_STATUSES
+    ]
+    if not matching:
+        return None
+    return max(matching, key=lambda item: item.updated_at)
+
+
 def create_job(project_id: str, kind: str) -> Job:
     job = Job(id=str(uuid.uuid4()), project_id=project_id, kind=kind)
     with LOCK:
@@ -35,15 +45,25 @@ def create_job(project_id: str, kind: str) -> Job:
     return job
 
 
+def create_unique_job(project_id: str, kind: str) -> tuple[Job, bool]:
+    """Return an active matching job or atomically create one.
+
+    The boolean is true only when this call created the job and therefore owns
+    submission of the background task.
+    """
+    with LOCK:
+        existing = _active_job_locked(project_id, kind)
+        if existing is not None:
+            return existing, False
+        _prune_terminal_jobs_locked()
+        job = Job(id=str(uuid.uuid4()), project_id=project_id, kind=kind)
+        JOBS[job.id] = job
+        return job, True
+
+
 def find_active_job(project_id: str, kind: str) -> Job | None:
     with LOCK:
-        matching = [
-            job for job in JOBS.values()
-            if job.project_id == project_id and job.kind == kind and job.status in ACTIVE_STATUSES
-        ]
-        if not matching:
-            return None
-        return max(matching, key=lambda item: item.updated_at)
+        return _active_job_locked(project_id, kind)
 
 
 def get_job(job_id: str) -> Job:
