@@ -24,6 +24,7 @@ projects/
 models/
 src/renderer/components/ScenePreview.v153.tsx
 android/.gradle/
+android/.kotlin/
 android/.idea/
 android/local.properties
 android/**/build/
