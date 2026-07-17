@@ -103,11 +103,20 @@ def _safe_upload_directory(project_id: str, folder: str) -> Path:
     return destination
 
 
+def _collision_safe_destination(destination: Path) -> Path:
+    if not destination.exists():
+        return destination
+    token = uuid.uuid4().hex[:8]
+    suffix = destination.suffix
+    max_stem = max(16, MAX_FILENAME_CHARS - len(suffix) - len(token) - 1)
+    return destination.with_name(f"{destination.stem[:max_stem]}-{token}{suffix}")
+
+
 async def save_upload(project_id: str, upload: UploadFile, folder: str, prefix: str = "") -> Path:
     destination_dir = _safe_upload_directory(project_id, folder)
     destination_dir.mkdir(parents=True, exist_ok=True)
     filename = f"{safe_prefix(prefix)}{safe_filename(upload.filename or 'upload.bin')}"
-    destination = (destination_dir / filename).resolve()
+    destination = _collision_safe_destination((destination_dir / filename).resolve())
     if destination_dir != destination.parent:
         await upload.close()
         raise UploadStorageError("The upload filename is invalid.", 400)
