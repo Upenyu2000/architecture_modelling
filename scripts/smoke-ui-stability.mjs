@@ -17,12 +17,16 @@ const roomifyStyles = readFileSync(new URL('../src/renderer/roomify-2.0.css', im
 const stabilityStyles = readFileSync(new URL('../src/renderer/stability-2.0.css', import.meta.url), 'utf8');
 const standaloneStyles = readFileSync(new URL('../src/renderer/standalone-layout-1.5.5.css', import.meta.url), 'utf8');
 const legacyPrepare = readFileSync(new URL('./prepare-v160-runtime.mjs', import.meta.url), 'utf8');
+const releasePrepare = readFileSync(new URL('./prepare-v200-runtime.mjs', import.meta.url), 'utf8');
 const openingService = readFileSync(new URL('../backend/app/services/openings.py', import.meta.url), 'utf8');
 const sharedPortalService = readFileSync(new URL('../backend/app/services/shared_portals.py', import.meta.url), 'utf8');
 const presentationService = readFileSync(new URL('../backend/app/services/presentation.py', import.meta.url), 'utf8');
 const presentationApi = readFileSync(new URL('../backend/app/presentation_api.py', import.meta.url), 'utf8');
 const presentationOrchestrator = readFileSync(new URL('../backend/app/services/rendering_v20.py', import.meta.url), 'utf8');
 const presentationRenderer = readFileSync(new URL('../backend/app/blender/generate_presentation.py', import.meta.url), 'utf8');
+const jobs = readFileSync(new URL('../backend/app/services/jobs.py', import.meta.url), 'utf8');
+const storage = readFileSync(new URL('../backend/app/storage.py', import.meta.url), 'utf8');
+const asgi = readFileSync(new URL('../backend/app/asgi.py', import.meta.url), 'utf8');
 
 function assert(condition, message) {
   if (!condition) throw new Error(message);
@@ -30,21 +34,34 @@ function assert(condition, message) {
 
 assert(packageJson.version === '2.0.0', 'Package and installer version must be 2.0.0.');
 assert(packageJson.scripts['prepare:runtime'].includes('prepare-v200-runtime.mjs'), 'The 2.0 runtime preparer must be active.');
+assert(packageJson.scripts['pretest:ui-stability'] === 'npm run prepare:runtime', 'The standalone UI smoke test must prepare its generated runtime.');
 assert(app.includes('<span>Roomify Studio 2.0</span>'), 'The visible application release label must be Roomify Studio 2.0.');
 assert(app.includes("./components/PresentationStudio"), 'The Roomify presentation studio must be imported at runtime.');
-assert(app.includes('<PresentationStudio project={project} disabled={busy} />'), 'The dual-render studio must be visible in the main workspace.');
+assert(app.includes('<PresentationStudio project={project} disabled={interactionLocked} />'), 'The dual-render studio must respect app-wide background job locks.');
+assert(app.includes('jobRevisionRef'), 'Main drawing/render polling must reject stale jobs.');
+assert(app.includes('projectIdRef'), 'Async project mutations must stay bound to their originating project.');
+assert(app.includes('scheduleJobPoll'), 'Main jobs must use non-overlapping recursive polling.');
+assert(app.includes('const interactionLocked = busy || backgroundJobRunning;'), 'Scene-changing controls must remain locked throughout background jobs.');
+assert(!app.includes('window.setInterval(async'), 'Async polling intervals must not overlap.');
 assert(main.includes("./roomify-2.0.css"), 'The Roomify-inspired visual design stylesheet must load.');
 assert(main.includes("./stability-2.0.css"), 'The final 2.0 stability stylesheet must load after the visual theme.');
 assert(main.indexOf("./stability-2.0.css") > main.indexOf("./roomify-2.0.css"), 'Stability styles must load after Roomify styles.');
 assert(legacyPrepare.includes('hasNewerProductLabel'), 'The legacy runtime preparer must preserve newer branding.');
 assert(legacyPrepare.includes('hasCompatibleReleaseLabel'), 'The legacy runtime preparer must be safe on repeated 2.0 builds.');
+assert(releasePrepare.includes('background job interaction lock'), 'The 2.0 preparer must generate app-wide interaction locks idempotently.');
 assert(api.includes('/presentation-renders'), 'The renderer API must expose dual presentation generation.');
+assert(api.includes('/presentation-latest'), 'The renderer API must restore the latest valid presentation.');
+assert(api.includes('DEFAULT_REQUEST_TIMEOUT_MS'), 'API calls must have a default timeout.');
+assert(api.includes('AbortController'), 'API calls must support cancellation and timeout aborts.');
+assert(api.includes('errorDetails'), 'FastAPI errors must be converted into readable messages.');
 assert(presentationStudio.includes('Top-down layout'), 'Top-down render selection is missing.');
 assert(presentationStudio.includes('Eye-level interior'), 'Eye-level perspective render selection is missing.');
 assert(presentationStudio.includes('Download presentation ZIP'), 'Presentation bundle export is missing.');
 assert(presentationStudio.includes('Dining circulation'), 'Dining flow status is missing.');
 assert(presentationStudio.includes('runRevisionRef'), 'Presentation polling must reject stale jobs.');
 assert(presentationStudio.includes('setCompletedJob'), 'A failed retry must not discard the previous completed output.');
+assert(presentationStudio.includes('getLatestPresentation'), 'Completed presentation output must survive an app restart.');
+assert(presentationStudio.includes('persistedMetadata'), 'Restored presentation metadata must drive the output UI.');
 assert(presentationStudio.includes('controlsLocked'), 'Presentation settings must lock while a render is starting or running.');
 assert(presentationStudio.includes('window.setTimeout'), 'Presentation polling must avoid overlapping interval requests.');
 assert((presentationConstants.match(/value: '/g) ?? []).length === 19, 'All 19 requested architectural styles must be selectable.');
@@ -58,6 +75,9 @@ assert(stabilityStyles.includes('.presentation-progress.failed'), 'Failed render
 assert(roomifyStyles.includes('--roomify-primary: #f97316'), 'Roomify orange design token is missing.');
 assert(roomifyStyles.includes('.presentation-render-frame'), 'Dual-render presentation stage styling is missing.');
 assert(presentationApi.includes('/presentation-renders'), 'Backend presentation route is missing.');
+assert(presentationApi.includes('/presentation-latest'), 'Backend latest-presentation restoration route is missing.');
+assert(presentationApi.includes('_scene_fingerprint'), 'Persisted renders must be invalidated when their source scene changes.');
+assert(presentationApi.includes('_request_dedupe_key'), 'Duplicate presentation requests must share one active job.');
 assert(presentationApi.includes('_remove_failed_outputs'), 'Failed presentation files must be cleaned up.');
 assert(presentationApi.includes('temporary_archive.replace(archive)'), 'Presentation ZIP publication must be atomic.');
 assert(presentationService.includes('STYLE_PRESETS'), 'Style-aware material preparation is missing.');
@@ -68,6 +88,12 @@ assert(presentationOrchestrator.includes('temporary_output.replace(output)'), 'R
 assert(presentationRenderer.includes('PresentationTopDownCamera'), 'Orthographic top-down camera is missing.');
 assert(presentationRenderer.includes('PresentationEyeLevelCamera'), 'Eye-level interior camera is missing.');
 assert(presentationRenderer.includes('procedural_material'), 'Procedural PBR texture generation is missing.');
+assert(jobs.includes('create_unique_job'), 'Concurrent clients must not create duplicate active jobs.');
+assert(jobs.includes('MAX_RETAINED_TERMINAL_JOBS'), 'Completed job records must be bounded in memory.');
+assert(storage.includes('.upload'), 'Uploads must be staged in temporary files.');
+assert(storage.includes('temporary.replace(destination)'), 'Uploads must be published atomically.');
+assert(storage.includes('DEFAULT_MAX_UPLOAD_BYTES'), 'Uploads must have a server-side size limit.');
+assert(asgi.includes('UploadStorageError'), 'Upload storage errors must return controlled HTTP responses.');
 assert(electronMain.includes("path.join(appRoot, 'backend', '.venv', 'Scripts', 'python.exe')"), 'Windows development must discover the project backend virtual environment automatically.');
 assert(electronMain.includes('configuredPython || (fs.existsSync(projectPython) ? projectPython : systemPython)'), 'Development Python selection must prefer DREAMHOME_PYTHON, then the project virtual environment, then the system interpreter.');
 assert(!/<PerspectiveCamera[^>]*\bposition=/.test(scene), 'Walkthrough camera must not receive a spawn position prop.');
@@ -89,4 +115,4 @@ assert(runtimeStyles.includes('.walkthrough-active canvas'), 'First-person input
 assert(spawnStyles.includes('.walkthrough-spawn-controls'), 'First-person spawn control styling is missing.');
 assert(standaloneStyles.includes('contain: layout paint style'), 'Independent renderer paint containment is missing.');
 
-console.log('UI stability smoke test passed: repeat-safe Roomify Studio 2.0 builds, guarded uploads, stale-job-safe polling, atomic render outputs, 19 styles, text-free geometry, dining optimisation, selectable spawning and stable portals.');
+console.log('UI stability smoke test passed: repeat-safe Roomify Studio 2.0 builds, app-wide stale-job protection, persistent revision-safe presentations, atomic guarded uploads, API timeouts, 19 styles, text-free geometry, dining optimisation, selectable spawning and stable portals.');
