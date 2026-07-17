@@ -45,7 +45,19 @@ jobs:
           path: typecheck.log
           if-no-files-found: warn
       - name: Build installer
-        run: npm run dist:windows
+        timeout-minutes: 35
+        shell: pwsh
+        run: |
+          & npm run dist:windows 2>&1 | Tee-Object -FilePath build-windows.log
+          $ExitCode = $LASTEXITCODE
+          exit $ExitCode
+      - name: Upload build diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Windows-Build-Diagnostics
+          path: build-windows.log
+          if-no-files-found: warn
       - uses: actions/upload-artifact@v4
         with:
           name: Dream-Home-Visualizer-Windows

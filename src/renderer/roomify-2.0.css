@@ -1,0 +1,837 @@
+:root {
+  --roomify-background: #fdfbf7;
+  --roomify-foreground: #1a1a1a;
+  --roomify-surface: #ffffff;
+  --roomify-muted: #71717a;
+  --roomify-line: #e4e4e7;
+  --roomify-primary: #f97316;
+  --roomify-primary-dark: #ea580c;
+  --roomify-blue: #3b82f6;
+  --roomify-shadow: 0 24px 65px rgba(24, 24, 27, 0.09);
+  --roomify-serif: Georgia, "Times New Roman", serif;
+  --roomify-sans: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+html,
+body,
+#root {
+  min-width: 0 !important;
+  background: var(--roomify-background) !important;
+  color: var(--roomify-foreground) !important;
+  font-family: var(--roomify-sans) !important;
+}
+
+body {
+  background-image:
+    radial-gradient(circle at 82% -15%, rgba(59, 130, 246, 0.13), transparent 34%),
+    radial-gradient(circle at 4% 20%, rgba(249, 115, 22, 0.08), transparent 27%) !important;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6,
+.brand-copy strong {
+  font-family: var(--roomify-serif) !important;
+  letter-spacing: -0.025em;
+}
+
+.app-shell {
+  min-height: 100vh;
+  background: transparent !important;
+}
+
+.topbar {
+  position: sticky !important;
+  top: 0;
+  z-index: 80;
+  height: 68px !important;
+  padding: 0 clamp(18px, 3vw, 44px) !important;
+  border-bottom: 1px solid rgba(24, 24, 27, 0.08) !important;
+  background: rgba(253, 251, 247, 0.92) !important;
+  color: #18181b !important;
+  backdrop-filter: blur(18px);
+  box-shadow: none !important;
+}
+
+.brand-mark {
+  width: 38px !important;
+  height: 38px !important;
+  border: 1px solid #fed7aa !important;
+  border-radius: 11px !important;
+  background: #fff7ed !important;
+  color: var(--roomify-primary) !important;
+}
+
+.brand-copy span {
+  color: var(--roomify-primary) !important;
+  font-weight: 800;
+  letter-spacing: 0.16em !important;
+}
+
+.brand-copy strong {
+  color: #18181b;
+  font-size: 19px !important;
+}
+
+.topbar-meta {
+  color: #71717a !important;
+}
+
+.local-badge,
+.status-dot {
+  border: 1px solid #e4e4e7 !important;
+  background: #ffffff !important;
+  color: #52525b !important;
+  box-shadow: 0 3px 12px rgba(24, 24, 27, 0.04);
+}
+
+.error-banner,
+.notice-banner {
+  max-width: 1580px;
+  margin-inline: auto !important;
+  border-radius: 12px !important;
+}
+
+.error-banner {
+  border-color: #fecaca !important;
+  background: #fff1f2 !important;
+  color: #9f1239 !important;
+}
+
+.notice-banner {
+  border-color: #bbf7d0 !important;
+  background: #f0fdf4 !important;
+  color: #166534 !important;
+}
+
+.workspace {
+  grid-template-columns: clamp(335px, 27vw, 420px) minmax(0, 1fr) !important;
+  gap: clamp(22px, 3vw, 46px) !important;
+  width: min(100%, 1640px) !important;
+  max-width: 1640px !important;
+  margin: 0 auto;
+  padding: 28px clamp(18px, 3vw, 46px) 52px !important;
+  overflow: visible !important;
+}
+
+.left-column,
+.right-column {
+  overflow: visible !important;
+}
+
+.left-column {
+  align-self: start;
+}
+
+.panel,
+.settings-panel,
+.viewer-panel,
+.output-panel,
+.job-panel,
+.roomify-panel {
+  border: 1px solid var(--roomify-line) !important;
+  border-radius: 18px !important;
+  background: var(--roomify-surface) !important;
+  color: var(--roomify-foreground) !important;
+  box-shadow: var(--roomify-shadow) !important;
+}
+
+.panel,
+.settings-panel {
+  padding: 20px !important;
+}
+
+.panel-heading,
+.viewer-header {
+  color: #18181b;
+}
+
+.panel-heading svg,
+.viewer-header svg {
+  color: var(--roomify-primary);
+}
+
+.eyebrow {
+  color: var(--roomify-primary) !important;
+  letter-spacing: 0.16em !important;
+}
+
+.panel-copy,
+.manual-note,
+.reset-note,
+.output-copy p,
+.warning-strip,
+.slot-copy span,
+.slot-copy small {
+  color: #71717a !important;
+}
+
+input,
+select {
+  border: 1px solid #d4d4d8 !important;
+  background: #ffffff !important;
+  color: #18181b !important;
+  border-radius: 10px !important;
+}
+
+input:focus,
+select:focus {
+  border-color: var(--roomify-primary) !important;
+  box-shadow: 0 0 0 3px rgba(249, 115, 22, 0.13) !important;
+}
+
+.primary,
+.secondary,
+.render-controls button,
+.input-with-button button,
+.link-button,
+.slot-actions button,
+.danger-button,
+.drawing-file button,
+.view-switch button {
+  border-radius: 9px !important;
+  font-weight: 700;
+}
+
+.primary {
+  border-color: var(--roomify-primary) !important;
+  background: var(--roomify-primary) !important;
+  color: #ffffff !important;
+  box-shadow: 0 8px 20px rgba(249, 115, 22, 0.18) !important;
+}
+
+.primary:hover:not(:disabled) {
+  background: var(--roomify-primary-dark) !important;
+}
+
+.secondary,
+.render-controls button,
+.input-with-button button,
+.link-button,
+.slot-actions button,
+.drawing-file button {
+  border-color: #d4d4d8 !important;
+  background: #ffffff !important;
+  color: #27272a !important;
+}
+
+.secondary:hover:not(:disabled),
+.render-controls button:hover:not(:disabled),
+.slot-actions button:hover:not(:disabled) {
+  background: #f4f4f5 !important;
+}
+
+.dropzone {
+  min-height: 174px !important;
+  border: 2px dashed #d4d4d8 !important;
+  border-radius: 15px !important;
+  background: #fafafa !important;
+  color: #18181b !important;
+}
+
+.dropzone:hover,
+.dropzone.is-dragging {
+  border-color: var(--roomify-primary) !important;
+  background: #fff7ed !important;
+}
+
+.dropzone.complete {
+  border-color: #86efac !important;
+  background: #f0fdf4 !important;
+}
+
+.dropzone span,
+.asset-card span,
+.model-dropzone span {
+  color: #71717a !important;
+}
+
+.upload-progress-shell {
+  width: min(100%, 230px);
+  height: 6px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #e4e4e7;
+}
+
+.upload-progress-shell i {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--roomify-primary);
+  transition: width 180ms ease;
+}
+
+.tabs {
+  gap: 7px !important;
+}
+
+.tabs button {
+  border: 1px solid transparent !important;
+  color: #71717a !important;
+}
+
+.tabs button.active {
+  border-color: #fed7aa !important;
+  background: #fff7ed !important;
+  color: #c2410c !important;
+}
+
+.asset-card,
+.model-dropzone,
+.slot-card,
+.empty-slots,
+.drawing-file {
+  border-color: #e4e4e7 !important;
+  background: #fafafa !important;
+  color: #18181b !important;
+}
+
+.asset-card:hover,
+.model-dropzone:hover {
+  border-color: #fdba74 !important;
+  background: #fff7ed !important;
+}
+
+.viewer-panel {
+  min-height: 650px !important;
+  overflow: hidden !important;
+}
+
+.viewer-header {
+  display: grid !important;
+  grid-template-columns: minmax(220px, 0.42fr) minmax(0, 1fr) !important;
+  gap: 18px;
+  padding: 22px 22px 0 !important;
+}
+
+.viewer-actions {
+  justify-content: flex-end;
+}
+
+.view-switch {
+  border: 1px solid #e4e4e7 !important;
+  background: #fafafa !important;
+  border-radius: 11px !important;
+}
+
+.view-switch button {
+  color: #71717a !important;
+}
+
+.view-switch button.active {
+  background: #18181b !important;
+  color: #ffffff !important;
+}
+
+.canvas-wrap {
+  background: #f4f4f5;
+}
+
+.output-panel {
+  padding: 20px !important;
+}
+
+.job-panel {
+  color: #18181b;
+}
+
+.progress,
+.presentation-progress-track {
+  background: #e4e4e7 !important;
+}
+
+.progress i,
+.presentation-progress-track i {
+  background: linear-gradient(90deg, var(--roomify-primary), #fb923c) !important;
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  border-radius: 9px;
+  font-family: var(--roomify-sans);
+  font-weight: 750;
+  line-height: 1;
+  text-decoration: none;
+  transition: transform 160ms ease, background 160ms ease, border-color 160ms ease, box-shadow 160ms ease;
+  cursor: pointer;
+}
+
+.btn:hover:not(:disabled) {
+  transform: translateY(-1px);
+}
+
+.btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.btn--primary {
+  border: 1px solid var(--roomify-primary);
+  background: var(--roomify-primary);
+  color: #ffffff;
+  box-shadow: 0 10px 24px rgba(249, 115, 22, 0.2);
+}
+
+.btn--primary:hover:not(:disabled) {
+  border-color: var(--roomify-primary-dark);
+  background: var(--roomify-primary-dark);
+}
+
+.btn--secondary {
+  border: 1px solid #d4d4d8;
+  background: #ffffff;
+  color: #18181b;
+}
+
+.btn--secondary:hover:not(:disabled) {
+  background: #f4f4f5;
+}
+
+.btn--ghost {
+  border: 1px solid transparent;
+  background: transparent;
+  color: #52525b;
+}
+
+.btn--ghost:hover:not(:disabled) {
+  background: rgba(24, 24, 27, 0.06);
+  color: #18181b;
+}
+
+.btn--outline {
+  border: 1px solid #d4d4d8;
+  background: transparent;
+  color: #27272a;
+}
+
+.btn--sm { padding: 9px 12px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.07em; }
+.btn--md { padding: 11px 17px; font-size: 13px; }
+.btn--lg { padding: 14px 19px; font-size: 13px; text-transform: uppercase; letter-spacing: 0.055em; }
+.btn--full { width: 100%; }
+
+.roomify-panel {
+  overflow: hidden;
+}
+
+.roomify-panel-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 24px;
+  border-bottom: 1px solid #f0f0f2;
+}
+
+.roomify-panel-meta > span,
+.presentation-compare header span {
+  display: block;
+  margin-bottom: 5px;
+  color: #a1a1aa;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.roomify-panel-meta h2,
+.presentation-compare h3 {
+  margin: 0;
+  color: #18181b;
+  font-size: clamp(24px, 2.5vw, 34px);
+}
+
+.roomify-panel-meta p {
+  max-width: 720px;
+  margin: 8px 0 0;
+  color: #71717a;
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.presentation-badge {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 7px;
+  padding: 9px 11px;
+  border: 1px solid #fed7aa;
+  border-radius: 9px;
+  background: #fff7ed;
+  color: #c2410c;
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+}
+
+.presentation-controls {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr)) minmax(210px, 1.25fr);
+  gap: 14px;
+  align-items: end;
+  padding: 20px 24px;
+  background: #fafafa;
+  border-bottom: 1px solid #ededf0;
+}
+
+.presentation-controls label {
+  color: #3f3f46 !important;
+  font-weight: 750;
+}
+
+.presentation-controls label small {
+  min-height: 31px;
+  color: #a1a1aa;
+  font-size: 10px;
+  font-weight: 500;
+  line-height: 1.45;
+}
+
+.presentation-controls select {
+  min-height: 43px;
+}
+
+.presentation-generate {
+  min-height: 45px;
+  margin-bottom: 2px;
+}
+
+.presentation-progress {
+  display: grid;
+  grid-template-columns: minmax(180px, auto) minmax(120px, 1fr) auto;
+  gap: 14px;
+  align-items: center;
+  padding: 12px 24px;
+  border-bottom: 1px solid #ededf0;
+  background: #ffffff;
+  color: #52525b;
+  font-size: 12px;
+}
+
+.presentation-progress > div:first-child {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.presentation-progress.completed {
+  color: #166534;
+  background: #f0fdf4;
+}
+
+.presentation-progress-track {
+  height: 7px;
+  overflow: hidden;
+  border-radius: 999px;
+}
+
+.presentation-progress-track i {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  transition: width 300ms ease;
+}
+
+.presentation-error {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin: 16px 24px 0;
+  padding: 12px 14px;
+  border: 1px solid #fecaca;
+  border-radius: 10px;
+  background: #fff1f2;
+  color: #9f1239;
+  font-size: 12px;
+}
+
+.presentation-stage {
+  position: relative;
+  padding: 20px 24px 24px;
+}
+
+.presentation-view-tabs {
+  display: inline-flex;
+  gap: 4px;
+  margin-bottom: 12px;
+  padding: 4px;
+  border: 1px solid #e4e4e7;
+  border-radius: 10px;
+  background: #fafafa;
+}
+
+.presentation-view-tabs button {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 9px 12px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: #71717a;
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.presentation-view-tabs button.active {
+  background: #18181b;
+  color: #ffffff;
+  box-shadow: 0 5px 14px rgba(24, 24, 27, 0.15);
+}
+
+.presentation-render-frame {
+  position: relative;
+  min-height: 470px;
+  overflow: hidden;
+  border: 1px solid #e4e4e7;
+  border-radius: 14px;
+  background:
+    linear-gradient(rgba(59, 130, 246, 0.07) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(59, 130, 246, 0.07) 1px, transparent 1px),
+    #f4f4f5;
+  background-size: 60px 60px;
+}
+
+.presentation-render-frame > img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  min-height: 470px;
+  object-fit: contain;
+  background: #f4f4f5;
+}
+
+.presentation-source-placeholder {
+  position: relative;
+  min-height: 470px;
+}
+
+.presentation-source-placeholder > img {
+  width: 100%;
+  height: 470px;
+  object-fit: contain;
+  opacity: 0.34;
+  filter: grayscale(0.25);
+}
+
+.presentation-source-placeholder > div,
+.presentation-empty {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 8px;
+  padding: 28px;
+  text-align: center;
+  color: #52525b;
+}
+
+.presentation-source-placeholder strong,
+.presentation-empty strong {
+  color: #18181b;
+  font-family: var(--roomify-serif);
+  font-size: 22px;
+}
+
+.presentation-source-placeholder span {
+  max-width: 490px;
+  color: #71717a;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.presentation-render-overlay {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 8px;
+  padding: 30px;
+  background: rgba(255, 255, 255, 0.82);
+  backdrop-filter: blur(8px);
+  color: var(--roomify-primary);
+  text-align: center;
+}
+
+.presentation-render-overlay strong {
+  color: #18181b;
+  font-family: var(--roomify-serif);
+  font-size: 21px;
+}
+
+.presentation-render-overlay span {
+  color: #71717a;
+  font-size: 12px;
+}
+
+.presentation-output-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 9px;
+  margin-top: 13px;
+}
+
+.presentation-summary {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  border-top: 1px solid #ededf0;
+  background: #fafafa;
+}
+
+.presentation-summary article {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  padding: 17px 18px;
+  border-right: 1px solid #ededf0;
+}
+
+.presentation-summary article:last-child {
+  border-right: 0;
+}
+
+.presentation-summary strong {
+  overflow: hidden;
+  color: #18181b;
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.presentation-summary span {
+  color: #a1a1aa;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+}
+
+.presentation-compare {
+  padding: 24px;
+  border-top: 1px solid #ededf0;
+}
+
+.presentation-compare header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 18px;
+  margin-bottom: 14px;
+}
+
+.presentation-compare h3 {
+  font-size: 23px;
+}
+
+.presentation-compare header small {
+  color: #a1a1aa;
+}
+
+.presentation-compare > div {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+
+.presentation-compare figure {
+  overflow: hidden;
+  margin: 0;
+  border: 1px solid #e4e4e7;
+  border-radius: 12px;
+  background: #f4f4f5;
+}
+
+.presentation-compare img {
+  display: block;
+  width: 100%;
+  height: 300px;
+  object-fit: contain;
+}
+
+.presentation-compare figcaption {
+  padding: 10px 12px;
+  border-top: 1px solid #e4e4e7;
+  background: #ffffff;
+  color: #52525b;
+  font-size: 11px;
+  font-weight: 750;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+}
+
+.spin {
+  animation: roomify-spin 1s linear infinite;
+}
+
+@keyframes roomify-spin {
+  to { transform: rotate(360deg); }
+}
+
+@media (max-width: 1280px) {
+  .presentation-controls {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .presentation-summary {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 1060px) {
+  .workspace {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  .left-column,
+  .right-column {
+    grid-column: 1 !important;
+  }
+
+  .viewer-header {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+@media (max-width: 720px) {
+  .topbar-meta {
+    display: none !important;
+  }
+
+  .presentation-controls,
+  .presentation-summary,
+  .presentation-compare > div {
+    grid-template-columns: 1fr;
+  }
+
+  .presentation-progress {
+    grid-template-columns: 1fr auto;
+  }
+
+  .presentation-progress-track {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
+
+  .roomify-panel-header,
+  .presentation-compare header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .presentation-render-frame,
+  .presentation-render-frame > img,
+  .presentation-source-placeholder,
+  .presentation-source-placeholder > img {
+    min-height: 340px;
+    height: 340px;
+  }
+}

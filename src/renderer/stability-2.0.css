@@ -1,0 +1,89 @@
+/* Final 2.0 interaction guardrails. Loaded after the Roomify visual layer. */
+
+input:disabled,
+select:disabled,
+button:disabled,
+.dropzone.is-disabled,
+.asset-card.is-disabled {
+  cursor: not-allowed !important;
+}
+
+input:disabled,
+select:disabled,
+.dropzone.is-disabled,
+.asset-card.is-disabled {
+  opacity: 0.62;
+}
+
+.dropzone.is-disabled,
+.asset-card.is-disabled {
+  pointer-events: none;
+  filter: saturate(0.72);
+}
+
+.tabs button:disabled {
+  opacity: 0.48;
+}
+
+.upload-inline-error {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-top: 10px;
+  padding: 10px 12px;
+  border: 1px solid #fecaca;
+  border-radius: 9px;
+  background: #fff1f2;
+  color: #9f1239;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.upload-inline-error svg,
+.presentation-error svg {
+  flex: 0 0 auto;
+}
+
+.presentation-controls select:disabled {
+  background: #f4f4f5 !important;
+  color: #71717a !important;
+}
+
+.presentation-progress.failed {
+  border-color: #fecaca;
+  background: #fff1f2;
+  color: #9f1239;
+}
+
+.presentation-progress.failed .presentation-progress-track i {
+  background: #e11d48 !important;
+}
+
+.presentation-error span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.presentation-output-actions button,
+.presentation-output-actions a {
+  min-height: 35px;
+}
+
+.presentation-view-tabs button:focus-visible,
+.btn:focus-visible,
+.tabs button:focus-visible {
+  outline: 3px solid rgba(249, 115, 22, 0.24);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .spin {
+    animation-duration: 1.8s !important;
+  }
+
+  .btn,
+  .presentation-progress-track i,
+  .upload-progress-shell i {
+    transition-duration: 0.01ms !important;
+  }
+}

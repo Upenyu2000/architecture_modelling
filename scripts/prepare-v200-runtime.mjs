@@ -1,0 +1,126 @@
+import { readFile, writeFile } from 'node:fs/promises';
+import { fileURLToPath } from 'node:url';
+import path from 'node:path';
+
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+
+await import('./prepare-v160-runtime.mjs');
+
+function replaceOne(source, pattern, replacement, label) {
+  if (!pattern.test(source)) throw new Error(`2.0 runtime patch could not find: ${label}`);
+  return source.replace(pattern, replacement);
+}
+
+const appPath = path.join(root, 'src', 'renderer', 'App.tsx');
+let app = (await readFile(appPath, 'utf8')).replace(/\r\n/g, '\n');
+
+if (!app.includes("./components/PresentationStudio")) {
+  app = replaceOne(
+    app,
+    /import \{ ArchitecturePanel \} from '\.\/components\/ArchitecturePanel';/,
+    "import { ArchitecturePanel } from './components/ArchitecturePanel';\nimport { PresentationStudio } from './components/PresentationStudio';",
+    'presentation studio import',
+  );
+}
+
+app = app.replace(
+  /<span>(?:Arch-AI Convert 1\.6\.1|Roomify Studio 2\.0)<\/span>/,
+  '<span>Roomify Studio 2.0</span>',
+);
+
+if (!app.includes('const interactionLocked = busy || backgroundJobRunning;')) {
+  app = replaceOne(
+    app,
+    /  const jobProgress = clampProgress\(job\?\.progress\);/,
+    `  const backgroundJobRunning = job?.status === 'queued' || job?.status === 'running';
+  const interactionLocked = busy || backgroundJobRunning;
+  const jobProgress = clampProgress(job?.progress);`,
+    'background job interaction lock',
+  );
+}
+
+// Keep all project-mutating controls disabled until drawing, render and video
+// jobs reach a terminal state. These replacements are intentionally idempotent.
+app = app.replaceAll('busy={busy}', 'busy={interactionLocked}');
+app = app.replaceAll('disabled={busy ||', 'disabled={interactionLocked ||');
+app = app.replaceAll('disabled={busy}', 'disabled={interactionLocked}');
+app = app.replaceAll('!busy &&', '!interactionLocked &&');
+
+if (!app.includes('<PresentationStudio project={project} disabled={interactionLocked} />')) {
+  if (app.includes('<PresentationStudio project={project} disabled={busy} />')) {
+    app = app.replace(
+      '<PresentationStudio project={project} disabled={busy} />',
+      '<PresentationStudio project={project} disabled={interactionLocked} />',
+    );
+  } else {
+    app = replaceOne(
+      app,
+      /          <section className="output-panel">/,
+      '          <PresentationStudio project={project} disabled={interactionLocked} />\n          <section className="output-panel">',
+      'presentation studio placement',
+    );
+  }
+}
+
+if (!app.includes('<span>Roomify Studio 2.0</span>')) {
+  throw new Error('2.0 runtime patch could not update the visible application release label.');
+}
+if (!app.includes('const interactionLocked = busy || backgroundJobRunning;')) {
+  throw new Error('2.0 runtime patch could not activate the background-job interaction lock.');
+}
+await writeFile(appPath, app, 'utf8');
+
+const apiPath = path.join(root, 'src', 'renderer', 'lib', 'api.ts');
+let api = (await readFile(apiPath, 'utf8')).replace(/\r\n/g, '\n');
+if (!api.includes('getLatestPresentation:')) {
+  api = replaceOne(
+    api,
+    /  render: \(id: string, quality: 'preview' \| '1080p' \| '4k', engine: 'auto' \| 'technical' \| 'blender'\) =>/,
+    `  getLatestPresentation: (id: string) =>
+    request<{ presentation?: Record<string, unknown> | null }>(\`/api/v1/projects/\${id}/presentation-latest\`, { timeoutMs: 30 * 1000 }),
+  render: (id: string, quality: 'preview' | '1080p' | '4k', engine: 'auto' | 'technical' | 'blender') =>`,
+    'latest presentation API action',
+  );
+}
+if (!api.includes('presentationRenders:')) {
+  api = replaceOne(
+    api,
+    /  getLatestPresentation: \(id: string\) =>[\s\S]*?\n  render: \(id: string, quality: 'preview' \| '1080p' \| '4k', engine: 'auto' \| 'technical' \| 'blender'\) =>/,
+    `  getLatestPresentation: (id: string) =>
+    request<{ presentation?: Record<string, unknown> | null }>(\`/api/v1/projects/\${id}/presentation-latest\`, { timeoutMs: 30 * 1000 }),
+  presentationRenders: (
+    id: string,
+    style: string,
+    quality: 'preview' | '1080p' | '4k',
+    engine: 'auto' | 'blender',
+  ) => request<Job>(\`/api/v1/projects/\${id}/presentation-renders\`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ style, quality, engine, auto_furnish: true, optimize_dining: true }),
+  }),
+  render: (id: string, quality: 'preview' | '1080p' | '4k', engine: 'auto' | 'technical' | 'blender') =>`,
+    'presentation render API action',
+  );
+}
+if (!api.includes('getLatestPresentation:') || !api.includes('presentationRenders:')) {
+  throw new Error('2.0 runtime patch could not activate presentation API actions.');
+}
+await writeFile(apiPath, api, 'utf8');
+
+const typesPath = path.join(root, 'src', 'renderer', 'types.ts');
+let types = (await readFile(typesPath, 'utf8')).replace(/\r\n/g, '\n');
+if (!types.includes('metadata?: Record<string, unknown>;')) {
+  types = replaceOne(
+    types,
+    /  output_path\?: string \| null;\n  output_url\?: string \| null;\n\}/,
+    `  output_path?: string | null;
+  output_url?: string | null;
+  error?: string | null;
+  metadata?: Record<string, unknown>;
+}`,
+    'job metadata fields',
+  );
+}
+await writeFile(typesPath, types, 'utf8');
+
+console.log('Prepared Roomify Studio 2.0 with persistent dual rendering, background-job locks, Roomify visual design and local Blender orchestration.');

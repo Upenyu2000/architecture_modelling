@@ -22,6 +22,10 @@ function savedAt(value: string): string {
   return Number.isNaN(date.getTime()) ? value : date.toLocaleString();
 }
 
+function clampProgress(value: number | undefined): number {
+  return Math.max(0, Math.min(100, Number.isFinite(value) ? Number(value) : 0));
+}
+
 function App() {
   const [project, setProject] = useState<Project | null>(null);
   const [saveSlots, setSaveSlots] = useState<SaveSlot[]>([]);
@@ -37,8 +41,23 @@ function App() {
   const [renderEngine, setRenderEngine] = useState<'auto' | 'technical' | 'blender'>('auto');
   const [job, setJob] = useState<Job | null>(null);
   const pollTimer = useRef<number | null>(null);
+  const jobRevisionRef = useRef(0);
+  const projectIdRef = useRef<string | null>(null);
+  const mountedRef = useRef(true);
+
+  const stopJobPolling = () => {
+    if (pollTimer.current !== null) window.clearTimeout(pollTimer.current);
+    pollTimer.current = null;
+  };
+
+  const cancelJobTracking = () => {
+    jobRevisionRef.current += 1;
+    stopJobPolling();
+  };
 
   useEffect(() => {
+    mountedRef.current = true;
+    let cancelled = false;
     void (async () => {
       try {
         await initApi();
@@ -51,9 +70,12 @@ function App() {
           const existing = await api.listProjects();
           selected = existing[0] ?? await api.createProject('Dream Home Project');
         }
+        if (cancelled || !mountedRef.current) return;
         localStorage.setItem('dreamhome.currentProject', selected.id);
+        projectIdRef.current = selected.id;
         setProject(selected);
         setSaveSlots(await api.listSaveSlots(selected.id));
+        if (cancelled || !mountedRef.current) return;
         if (selected.scene) {
           setPlanWidth(selected.scene.width_m);
           setWallHeight(selected.scene.wall_height_m);
@@ -61,13 +83,26 @@ function App() {
           setPlanType(selected.scene.plan_type ?? 'auto');
         }
       } catch (e) {
-        setError(e instanceof Error ? e.message : String(e));
+        if (!cancelled && mountedRef.current) setError(e instanceof Error ? e.message : String(e));
       } finally {
-        setBusy(false);
+        if (!cancelled && mountedRef.current) setBusy(false);
       }
     })();
-    return () => { if (pollTimer.current) window.clearInterval(pollTimer.current); };
+    return () => {
+      cancelled = true;
+      mountedRef.current = false;
+      cancelJobTracking();
+    };
   }, []);
+
+  useEffect(() => {
+    const nextProjectId = project?.id ?? null;
+    if (projectIdRef.current !== nextProjectId) {
+      cancelJobTracking();
+      setJob(null);
+      projectIdRef.current = nextProjectId;
+    }
+  }, [project?.id]);
 
   const run = async (task: () => Promise<void>) => {
     setBusy(true);
@@ -78,26 +113,36 @@ function App() {
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
-      setBusy(false);
+      if (mountedRef.current) setBusy(false);
     }
   };
 
   const refreshSaveSlots = async (projectId: string) => {
-    setSaveSlots(await api.listSaveSlots(projectId));
+    const slots = await api.listSaveSlots(projectId);
+    if (projectIdRef.current === projectId) setSaveSlots(slots);
   };
 
   const uploadFloorplan = (file: File) => run(async () => {
-    setProject(await api.uploadFloorplan(project!.id, file));
+    const projectId = project!.id;
+    const updated = await api.uploadFloorplan(projectId, file);
+    if (projectIdRef.current !== projectId) return;
+    setProject(updated);
     setNotice('Floor plan uploaded and empty borders removed. Choose the plan type before analysis.');
   });
 
   const uploadAsset = (category: AssetCategory, slot: string, file: File) => run(async () => {
-    setProject(await api.uploadAsset(project!.id, category, slot, file));
+    const projectId = project!.id;
+    const updated = await api.uploadAsset(projectId, category, slot, file);
+    if (projectIdRef.current !== projectId) return;
+    setProject(updated);
     setNotice('Reference image uploaded. It can now be mapped to a replaceable procedural furniture model or PBR surface.');
   });
 
   const uploadBuildingModel = (file: File) => run(async () => {
-    setProject(await api.uploadBuildingModel(project!.id, file));
+    const projectId = project!.id;
+    const updated = await api.uploadBuildingModel(projectId, file);
+    if (projectIdRef.current !== projectId) return;
+    setProject(updated);
     setNotice('3D building model uploaded. Set the units and cut height, then generate drawings.');
   });
 
@@ -122,18 +167,20 @@ function App() {
   };
 
   const analyze = () => run(async () => {
+    const projectId = project!.id;
     const detected = await api.analyze(
-      project!.id,
+      projectId,
       planWidth,
       wallHeight,
       wallDetection,
       minimumWallLength,
       planType,
     );
+    if (projectIdRef.current !== projectId) return;
     setProject((current) => current ? { ...current, scene: detected, status: 'analyzed' } : current);
     setPlanType(detected.plan_type);
     const scene = await api.compileArchitecture(
-      project!.id,
+      projectId,
       planWidth,
       wallHeight,
       wallDetection,
@@ -141,6 +188,7 @@ function App() {
       detected.plan_type,
       false,
     );
+    if (projectIdRef.current !== projectId) return;
     setProject((current) => current ? { ...current, scene, status: 'architecture_compiled' } : current);
     setNotice('Analysis and production compilation complete. Verify rooms, furniture, doors, windows, cutaway and portal walkthrough.');
   });
@@ -241,17 +289,22 @@ function App() {
   };
 
   const saveCurrentBuild = () => run(async () => {
+    const projectId = project!.id;
     const name = slotName.trim() || `Saved Build ${saveSlots.length + 1}`;
-    await api.createSaveSlot(project!.id, name);
-    await refreshSaveSlots(project!.id);
+    await api.createSaveSlot(projectId, name);
+    await refreshSaveSlots(projectId);
+    if (projectIdRef.current !== projectId) return;
     setSlotName('');
     setNotice(`Saved “${name}” for later.`);
   });
 
   const loadSavedBuild = (slot: SaveSlot) => run(async () => {
-    const restored = await api.loadSaveSlot(project!.id, slot.id);
-    setProject(restored);
+    const projectId = project!.id;
+    cancelJobTracking();
     setJob(null);
+    const restored = await api.loadSaveSlot(projectId, slot.id);
+    if (projectIdRef.current !== projectId) return;
+    setProject(restored);
     if (restored.scene) {
       setPlanWidth(restored.scene.width_m);
       setWallHeight(restored.scene.wall_height_m);
@@ -265,9 +318,10 @@ function App() {
   const removeSavedBuild = (slot: SaveSlot) => {
     if (!window.confirm(`Delete the save slot “${slot.name}”? This cannot be undone.`)) return;
     void run(async () => {
-      await api.deleteSaveSlot(project!.id, slot.id);
-      await refreshSaveSlots(project!.id);
-      setNotice(`Deleted “${slot.name}”.`);
+      const projectId = project!.id;
+      await api.deleteSaveSlot(projectId, slot.id);
+      await refreshSaveSlots(projectId);
+      if (projectIdRef.current === projectId) setNotice(`Deleted “${slot.name}”.`);
     });
   };
 
@@ -277,9 +331,12 @@ function App() {
     );
     if (!confirmed) return;
     void run(async () => {
-      const cleared = await api.resetProject(project!.id);
-      setProject(cleared);
+      const projectId = project!.id;
+      cancelJobTracking();
       setJob(null);
+      const cleared = await api.resetProject(projectId);
+      if (projectIdRef.current !== projectId) return;
+      setProject(cleared);
       setPlanWidth(14);
       setWallHeight(2.8);
       setWallDetection('clean');
@@ -289,49 +346,75 @@ function App() {
     });
   };
 
-  const watchJob = (created: Job) => {
-    setJob(created);
-    if (pollTimer.current) window.clearInterval(pollTimer.current);
-    pollTimer.current = window.setInterval(async () => {
+  const scheduleJobPoll = (jobId: string, ownerProjectId: string, revision: number) => {
+    stopJobPolling();
+    pollTimer.current = window.setTimeout(async () => {
+      if (!mountedRef.current || revision !== jobRevisionRef.current || projectIdRef.current !== ownerProjectId) return;
       try {
-        const latest = await api.getJob(created.id);
+        const latest = await api.getJob(jobId);
+        if (!mountedRef.current || revision !== jobRevisionRef.current || projectIdRef.current !== ownerProjectId) return;
         setJob(latest);
-        if (latest.status === 'completed' || latest.status === 'failed') {
-          if (pollTimer.current) window.clearInterval(pollTimer.current);
-          if (latest.status === 'completed' && latest.kind === 'drawing_set' && project) {
-            const refreshed = await api.getProject(project.id);
+        if (latest.status === 'failed') {
+          stopJobPolling();
+          setError(latest.error || latest.message || 'Background job failed.');
+          return;
+        }
+        if (latest.status === 'completed') {
+          stopJobPolling();
+          if (latest.kind === 'drawing_set') {
+            const refreshed = await api.getProject(ownerProjectId);
+            if (!mountedRef.current || revision !== jobRevisionRef.current || projectIdRef.current !== ownerProjectId) return;
             setProject(refreshed);
             setNotice('2D drawing set generated and saved with this project.');
           }
+          return;
         }
+        scheduleJobPoll(jobId, ownerProjectId, revision);
       } catch (pollError) {
-        if (pollTimer.current) window.clearInterval(pollTimer.current);
+        if (!mountedRef.current || revision !== jobRevisionRef.current) return;
+        stopJobPolling();
         setError(pollError instanceof Error ? pollError.message : String(pollError));
       }
     }, 1000);
   };
 
+  const watchJob = (created: Job, ownerProjectId: string) => {
+    const revision = jobRevisionRef.current + 1;
+    jobRevisionRef.current = revision;
+    stopJobPolling();
+    setJob(created);
+    if (created.status === 'failed') {
+      setError(created.error || created.message || 'Background job failed.');
+      return;
+    }
+    if (created.status !== 'completed') scheduleJobPoll(created.id, ownerProjectId, revision);
+  };
+
   const generateDrawings = (sliceHeight: number, upAxis: UpAxis, units: ModelUnits) => run(async () => {
-    watchJob(await api.createDrawings(project!.id, sliceHeight, upAxis, units));
+    const projectId = project!.id;
+    watchJob(await api.createDrawings(projectId, sliceHeight, upAxis, units), projectId);
   });
 
   const render = (quality: 'preview' | '1080p' | '4k') => run(async () => {
-    watchJob(await api.render(project!.id, quality, renderEngine));
+    const projectId = project!.id;
+    watchJob(await api.render(projectId, quality, renderEngine), projectId);
   });
 
   const walkthrough = () => run(async () => {
+    const projectId = project!.id;
     watchJob(await api.walkthrough(
-      project!.id,
+      projectId,
       15,
       '1080p',
       renderEngine === 'technical' ? 'auto' : renderEngine,
-    ));
+    ), projectId);
   });
 
   const hasBuild = Boolean(
     project?.floorplan || project?.building_model || project?.scene || project?.drawing_set
       || Object.keys(project?.assets ?? {}).length,
   );
+  const jobProgress = clampProgress(job?.progress);
 
   return (
     <main className="app-shell">
@@ -341,8 +424,8 @@ function App() {
         <div className="topbar-meta"><span className="local-badge">Local-first Windows app</span><span>{project?.name ?? 'Starting…'}</span></div>
       </header>
 
-      {error && <div className="error-banner">{error}</div>}
-      {notice && <div className="notice-banner">{notice}</div>}
+      {error && <div className="error-banner" role="alert">{error}</div>}
+      {notice && <div className="notice-banner" role="status">{notice}</div>}
 
       <div className="workspace">
         <aside className="left-column">
@@ -353,17 +436,17 @@ function App() {
             <p className="panel-copy">Keep named copies of the complete build, including uploads, geometry, interiors, materials, drawings and generated outputs.</p>
             <div className="save-row">
               <input value={slotName} maxLength={80} placeholder={`Saved Build ${saveSlots.length + 1}`} onChange={(event) => setSlotName(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter' && !busy && hasBuild) void saveCurrentBuild(); }} />
-              <button className="secondary" disabled={busy || !hasBuild} onClick={saveCurrentBuild}><Save size={16} /> Save</button>
+              <button type="button" className="secondary" disabled={busy || !hasBuild} onClick={saveCurrentBuild}><Save size={16} /> Save</button>
             </div>
             <div className="slot-list">
               {saveSlots.length === 0 ? <div className="empty-slots">No saved builds yet.</div> : saveSlots.map((slot) => (
                 <article className="slot-card" key={slot.id}>
                   <div className="slot-copy"><strong>{slot.name}</strong><span><Clock3 size={12} /> {savedAt(slot.updated_at)}</span><small>{slot.floorplan_filename ?? slot.building_model_filename ?? 'No source file'} · {slot.asset_count} assets · {slot.has_drawings ? 'drawings ready' : slot.has_scene ? '3D scene ready' : slot.status}</small></div>
-                  <div className="slot-actions"><button disabled={busy} title="Load saved build" onClick={() => loadSavedBuild(slot)}><FolderOpen size={16} /> Load</button><button className="danger-icon" disabled={busy} title="Delete save slot" onClick={() => removeSavedBuild(slot)}><Trash2 size={16} /></button></div>
+                  <div className="slot-actions"><button type="button" disabled={busy} title="Load saved build" onClick={() => loadSavedBuild(slot)}><FolderOpen size={16} /> Load</button><button type="button" className="danger-icon" disabled={busy} title="Delete save slot" onClick={() => removeSavedBuild(slot)}><Trash2 size={16} /></button></div>
                 </article>
               ))}
             </div>
-            <button className="danger-button" disabled={busy || !hasBuild} onClick={resetProject}><RotateCcw size={17} /> Reset active project</button>
+            <button type="button" className="danger-button" disabled={busy || !hasBuild} onClick={resetProject}><RotateCcw size={17} /> Reset active project</button>
             <span className="reset-note">Reset clears active files only. Save slots remain available.</span>
           </section>
 
@@ -377,8 +460,8 @@ function App() {
               <label>Wall detection<select value={wallDetection} onChange={(event) => setWallDetection(event.target.value as WallDetectionMode)}><option value="clean">Clean — fewer walls</option><option value="balanced">Balanced</option><option value="detailed">Detailed — preserve short walls</option></select></label>
               <label>Minimum wall length<div className="unit-input"><input type="number" min="0.3" max="10" step="0.1" value={minimumWallLength} onChange={(event) => setMinimumWallLength(Number(event.target.value))} /><span>m</span></div></label>
             </div>
-            <button className="primary" disabled={busy || !project?.floorplan} onClick={analyze}><Sparkles size={18} /> Analyze, classify and compile</button>
-            <button className="secondary full-width" disabled={busy || !project?.floorplan} onClick={() => void startManualLayout()}><Edit3 size={18} /> Start blank manual room layout</button>
+            <button type="button" className="primary" disabled={busy || !project?.floorplan} onClick={analyze}><Sparkles size={18} /> Analyze, classify and compile</button>
+            <button type="button" className="secondary full-width" disabled={busy || !project?.floorplan} onClick={() => void startManualLayout()}><Edit3 size={18} /> Start blank manual room layout</button>
             <span className="manual-note">Use Edit Rooms, Doors & Windows and Interior Design to correct every result.</span>
           </section>
 
@@ -406,14 +489,14 @@ function App() {
             <div className="output-copy"><span className="eyebrow">5. Output</span><h2>Photorealistic interior cutaway and walkthrough</h2><p>The same scene JSON drives detailed procedural furniture, uploaded-image materials, portal-aware first-person interaction and Blender HD/4K output.</p></div>
             <div className="render-controls">
               <select value={renderEngine} onChange={(e) => setRenderEngine(e.target.value as typeof renderEngine)}><option value="auto">Auto engine</option><option value="technical">Fast technical renderer</option><option value="blender">Blender 4 renderer</option></select>
-              <button disabled={busy || !project?.scene} onClick={() => render('preview')}><ImageIcon size={17} /> Preview</button>
-              <button disabled={busy || !project?.scene} onClick={() => render('1080p')}><Play size={17} /> HD</button>
-              <button disabled={busy || !project?.scene} onClick={() => render('4k')}><Sparkles size={17} /> 4K</button>
-              <button className="primary" disabled={busy || !project?.scene} onClick={walkthrough}><Film size={17} /> 15s walkthrough</button>
+              <button type="button" disabled={busy || !project?.scene} onClick={() => render('preview')}><ImageIcon size={17} /> Preview</button>
+              <button type="button" disabled={busy || !project?.scene} onClick={() => render('1080p')}><Play size={17} /> HD</button>
+              <button type="button" disabled={busy || !project?.scene} onClick={() => render('4k')}><Sparkles size={17} /> 4K</button>
+              <button type="button" className="primary" disabled={busy || !project?.scene} onClick={walkthrough}><Film size={17} /> 15s walkthrough</button>
             </div>
           </section>
 
-          {job && <section className="job-panel"><div><strong>{job.kind.replaceAll('_', ' ')}</strong><span>{job.message}</span></div><div className="progress"><i style={{ width: `${job.progress}%` }} /></div><strong>{job.progress}%</strong>{job.output_url && <a href={absoluteUrl(job.output_url)} target="_blank" rel="noreferrer">Open output</a>}{job.output_path && window.desktop && <button className="link-button" onClick={() => window.desktop?.openPath(job.output_path!)}>Show in Explorer</button>}</section>}
+          {job && <section className={`job-panel ${job.status}`} role="status"><div><strong>{job.kind.replaceAll('_', ' ')}</strong><span>{job.message}</span></div><div className="progress"><i style={{ width: `${jobProgress}%` }} /></div><strong>{jobProgress}%</strong>{job.output_url && <a href={absoluteUrl(job.output_url)} target="_blank" rel="noreferrer">Open output</a>}{job.output_path && window.desktop && <button type="button" className="link-button" onClick={() => window.desktop?.openPath(job.output_path!)}>Show in Explorer</button>}</section>}
         </section>
       </div>
     </main>

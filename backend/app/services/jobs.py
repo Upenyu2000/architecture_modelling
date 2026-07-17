@@ -8,16 +8,74 @@ from typing import Any, Callable
 
 from ..models import Job, utc_now
 
+
 JOBS: dict[str, Job] = {}
 LOCK = threading.Lock()
 EXECUTOR = ThreadPoolExecutor(max_workers=2, thread_name_prefix="dreamhome-job")
+MAX_RETAINED_TERMINAL_JOBS = 200
+TERMINAL_STATUSES = {"completed", "failed"}
+ACTIVE_STATUSES = {"queued", "running"}
+
+
+def _prune_terminal_jobs_locked() -> None:
+    terminal = sorted(
+        (job for job in JOBS.values() if job.status in TERMINAL_STATUSES),
+        key=lambda item: item.updated_at,
+    )
+    overflow = len(terminal) - MAX_RETAINED_TERMINAL_JOBS
+    for job in terminal[:max(0, overflow)]:
+        JOBS.pop(job.id, None)
+
+
+def _active_job_locked(project_id: str, kind: str, dedupe_key: str | None = None) -> Job | None:
+    matching = [
+        job for job in JOBS.values()
+        if job.project_id == project_id
+        and job.kind == kind
+        and job.status in ACTIVE_STATUSES
+        and (dedupe_key is None or job.metadata.get("dedupe_key") == dedupe_key)
+    ]
+    if not matching:
+        return None
+    return max(matching, key=lambda item: item.updated_at)
 
 
 def create_job(project_id: str, kind: str) -> Job:
     job = Job(id=str(uuid.uuid4()), project_id=project_id, kind=kind)
     with LOCK:
+        _prune_terminal_jobs_locked()
         JOBS[job.id] = job
     return job
+
+
+def create_unique_job(
+    project_id: str,
+    kind: str,
+    dedupe_key: str | None = None,
+    initial_metadata: dict[str, Any] | None = None,
+) -> tuple[Job, bool]:
+    """Return an active matching job or atomically create one.
+
+    The boolean is true only when this call created the job and therefore owns
+    submission of the background task. A dedupe key keeps stale jobs for older
+    scene revisions from blocking a new render.
+    """
+    with LOCK:
+        existing = _active_job_locked(project_id, kind, dedupe_key)
+        if existing is not None:
+            return existing, False
+        _prune_terminal_jobs_locked()
+        metadata = dict(initial_metadata or {})
+        if dedupe_key is not None:
+            metadata["dedupe_key"] = dedupe_key
+        job = Job(id=str(uuid.uuid4()), project_id=project_id, kind=kind, metadata=metadata)
+        JOBS[job.id] = job
+        return job, True
+
+
+def find_active_job(project_id: str, kind: str, dedupe_key: str | None = None) -> Job | None:
+    with LOCK:
+        return _active_job_locked(project_id, kind, dedupe_key)
 
 
 def get_job(job_id: str) -> Job:
@@ -29,12 +87,16 @@ def get_job(job_id: str) -> Job:
 
 def update_job(job_id: str, progress: int, message: str, **changes) -> None:
     with LOCK:
-        job = JOBS[job_id]
+        job = JOBS.get(job_id)
+        if job is None:
+            raise KeyError(job_id)
         job.progress = max(0, min(100, progress))
         job.message = message
         job.updated_at = utc_now()
         for key, value in changes.items():
             setattr(job, key, value)
+        if job.status in TERMINAL_STATUSES:
+            _prune_terminal_jobs_locked()
 
 
 def submit(
@@ -57,9 +119,15 @@ def submit(
                 status="completed",
                 output_path=str(output_path),
                 output_url=output_url,
-                metadata=metadata,
+                metadata={**job.metadata, **metadata},
+                error=None,
             )
         except Exception as exc:
             update_job(job.id, 100, "Failed", status="failed", error=str(exc), message=str(exc))
-    EXECUTOR.submit(runner)
+
+    try:
+        EXECUTOR.submit(runner)
+    except Exception as exc:
+        update_job(job.id, 100, "Failed to queue", status="failed", error=str(exc), message=str(exc))
+        raise
     return job

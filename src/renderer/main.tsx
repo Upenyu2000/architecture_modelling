@@ -11,6 +11,8 @@ import './viewport-1.5.3.css';
 import './runtime-1.5.4.css';
 import './runtime-1.6.1.css';
 import './standalone-layout-1.5.5.css';
+import './roomify-2.0.css';
+import './stability-2.0.css';
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
