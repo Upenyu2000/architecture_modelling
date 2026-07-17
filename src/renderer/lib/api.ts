@@ -6,24 +6,76 @@ import type { FurniturePayload, InteriorLibrary } from '../interior-types';
 
 export type AppSettingValue = string | boolean | number;
 
+type ApiRequestInit = RequestInit & { timeoutMs?: number };
+
+const DEFAULT_REQUEST_TIMEOUT_MS = 5 * 60 * 1000;
 let cachedBaseUrl = 'http://127.0.0.1:8765';
 
 export async function initApi(): Promise<void> {
-  if (window.desktop) cachedBaseUrl = await window.desktop.backendUrl();
+  if (!window.desktop) return;
+  const configured = (await window.desktop.backendUrl()).trim().replace(/\/+$/, '');
+  if (!/^https?:\/\//i.test(configured)) throw new Error('The desktop backend returned an invalid API address.');
+  cachedBaseUrl = configured;
 }
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`${cachedBaseUrl}${path}`, init);
-  if (!response.ok) {
-    const details = await response.text();
-    throw new Error(details || `${response.status} ${response.statusText}`);
+function errorDetails(raw: string, fallback: string): string {
+  if (!raw.trim()) return fallback;
+  try {
+    const payload = JSON.parse(raw) as { detail?: unknown; message?: unknown };
+    const detail = payload.detail ?? payload.message;
+    if (typeof detail === 'string' && detail.trim()) return detail;
+    if (Array.isArray(detail)) {
+      const messages = detail.map((item) => {
+        if (typeof item === 'string') return item;
+        if (item && typeof item === 'object' && 'msg' in item) return String((item as { msg: unknown }).msg);
+        return '';
+      }).filter(Boolean);
+      if (messages.length) return messages.join('; ');
+    }
+  } catch {
+    // The backend may return a plain-text diagnostic.
   }
-  return response.json() as Promise<T>;
+  return raw.trim() || fallback;
+}
+
+async function request<T>(path: string, init: ApiRequestInit = {}): Promise<T> {
+  const { timeoutMs = DEFAULT_REQUEST_TIMEOUT_MS, signal: externalSignal, ...requestInit } = init;
+  const controller = new AbortController();
+  const abortFromCaller = () => controller.abort(externalSignal?.reason);
+  if (externalSignal?.aborted) abortFromCaller();
+  else externalSignal?.addEventListener('abort', abortFromCaller, { once: true });
+
+  const timeout = window.setTimeout(() => controller.abort('timeout'), Math.max(1000, timeoutMs));
+  try {
+    const response = await fetch(`${cachedBaseUrl}${path.startsWith('/') ? path : `/${path}`}`, {
+      ...requestInit,
+      signal: controller.signal,
+    });
+    if (!response.ok) {
+      const raw = await response.text();
+      throw new Error(errorDetails(raw, `${response.status} ${response.statusText}`));
+    }
+    if (response.status === 204 || response.headers.get('content-length') === '0') return undefined as T;
+    return await response.json() as T;
+  } catch (error) {
+    if (controller.signal.aborted) {
+      if (externalSignal?.aborted) throw new Error('The request was cancelled.');
+      throw new Error('The local backend did not respond before the request timed out.');
+    }
+    if (error instanceof TypeError) {
+      throw new Error('Unable to reach the local architectural backend. Restart the app and verify that the backend process is running.');
+    }
+    throw error;
+  } finally {
+    window.clearTimeout(timeout);
+    externalSignal?.removeEventListener('abort', abortFromCaller);
+  }
 }
 
 export function absoluteUrl(path?: string | null): string | undefined {
   if (!path) return undefined;
-  return path.startsWith('http') ? path : `${cachedBaseUrl}${path}`;
+  if (/^(?:https?:|data:|blob:|file:)/i.test(path)) return path;
+  return `${cachedBaseUrl}${path.startsWith('/') ? path : `/${path}`}`;
 }
 
 function analysisPayload(
@@ -70,12 +122,12 @@ export const api = {
   uploadFloorplan: async (id: string, file: File) => {
     const body = new FormData();
     body.append('file', file);
-    return request<Project>(`/api/v1/projects/${id}/floorplan`, { method: 'POST', body });
+    return request<Project>(`/api/v1/projects/${id}/floorplan`, { method: 'POST', body, timeoutMs: 10 * 60 * 1000 });
   },
   uploadBuildingModel: async (id: string, file: File) => {
     const body = new FormData();
     body.append('file', file);
-    return request<Project>(`/api/v1/projects/${id}/building-model`, { method: 'POST', body });
+    return request<Project>(`/api/v1/projects/${id}/building-model`, { method: 'POST', body, timeoutMs: 10 * 60 * 1000 });
   },
   createDrawings: (
     id: string,
@@ -100,7 +152,7 @@ export const api = {
     const route = category === 'flooring' || category === 'walls'
       ? `/api/v1/projects/${id}/assets/${category}/${slot}`
       : `/api/v1/projects/${id}/interior-assets/${category}/${slot}`;
-    return request<Project>(route, { method: 'POST', body });
+    return request<Project>(route, { method: 'POST', body, timeoutMs: 15 * 60 * 1000 });
   },
   analyze: (
     id: string,
@@ -151,7 +203,7 @@ export const api = {
       training_examples: number;
       model_assets: number;
       material_assets: number;
-    }>(`/api/v1/projects/${id}/training-seed-pack`, { method: 'POST', body });
+    }>(`/api/v1/projects/${id}/training-seed-pack`, { method: 'POST', body, timeoutMs: 20 * 60 * 1000 });
   },
   updateMaterials: (id: string, materials: MaterialUpdate) =>
     request<SceneManifest>(`/api/v1/projects/${id}/materials`, {
@@ -231,7 +283,7 @@ export const api = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ seconds, quality, engine }),
     }),
-  getJob: (id: string) => request<Job>(`/api/v1/jobs/${id}`),
+  getJob: (id: string) => request<Job>(`/api/v1/jobs/${id}`, { timeoutMs: 30 * 1000 }),
   getSettings: () => request<Record<string, AppSettingValue>>('/api/v1/settings'),
   saveSettings: (settings: Record<string, AppSettingValue>) =>
     request<Record<string, AppSettingValue>>('/api/v1/settings', {
