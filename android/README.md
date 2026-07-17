@@ -30,14 +30,16 @@ The JSON stores measured dimensions, arbitrary room polygons, wall centre lines,
 - Deterministic, on-device structural line extraction for rectilinear floor plans.
 - Pixel-to-metre calibration using the known plan width.
 - JSON model compatible with the desktop `SceneManifest` field names.
-- JSON import, validation, atomic local persistence and export.
+- Formal `roomify.scene.v1` JSON Schema in `app/src/main/assets/scene_manifest.schema.json`.
+- JSON import, schema validation, mobile object-count limits, atomic local persistence and export.
 - Source-image alignment overlay for checking detection accuracy.
-- Tap and drag room correction in the 2D plan.
+- Tap-and-drag room correction without interrupting autosave.
 - Room rename, add and delete controls.
-- Isometric JSON-driven design preview.
+- Isometric JSON-driven design preview with walls, openings, furniture and material colours.
 - All 19 Roomify design styles.
-- Safe image and JSON size limits.
-- Unit tests for JSON round-tripping, geometry movement and scene fingerprints.
+- Safe 40 MB image and 10 MB JSON limits.
+- Local-only storage by default; Android automatic cloud backup is disabled for floor-plan privacy.
+- Unit tests for JSON round-tripping, schema compatibility, geometry movement and scene fingerprints.
 
 ## Accuracy boundary
 
@@ -47,7 +49,7 @@ The JSON format supports arbitrary polygons even when the initial on-device imag
 
 ## Open in Android Studio
 
-Use Android Studio Quail 2026.1.1 or newer with:
+Use Android Studio Quail 2 Feature Drop 2026.1.2 or newer with:
 
 - JDK 17
 - Android SDK 37
@@ -76,6 +78,7 @@ The Android model uses the same important keys as the desktop application:
 
 ```json
 {
+  "schema_version": "roomify.scene.v1",
   "project_id": "...",
   "width_m": 12.0,
   "depth_m": 8.0,
@@ -89,7 +92,11 @@ The Android model uses the same important keys as the desktop application:
 }
 ```
 
-Unknown fields are ignored safely during Android decoding; re-export preserves every field supported by the shared SceneManifest schema. Required geometry is validated before a scene can replace the last valid local project.
+Legacy desktop JSON without `schema_version` is accepted as `roomify.scene.v1`. A different declared schema version is rejected so newer or incompatible data is never silently interpreted as the current format. Unknown fields are ignored safely during decoding; re-export preserves every field supported by the shared Android SceneManifest model. Required geometry is validated before a scene can replace the last valid local project.
+
+## Privacy
+
+Floor plans can reveal the internal layout of a home. The application does not request internet or broad storage permissions, disables cleartext networking, keeps its working project in private app storage and disables automatic Android cloud backup. Use **Export JSON** when a deliberate portable copy is required.
 
 ## Next production upgrades
 
