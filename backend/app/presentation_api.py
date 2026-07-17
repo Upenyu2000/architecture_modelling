@@ -1,21 +1,23 @@
 from __future__ import annotations
 
+import json
 import shutil
 import zipfile
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 from .models import Job, Project
 from .storage import load_project, project_dir, write_json
-from .services.jobs import create_job, submit
+from .services.jobs import create_job, find_active_job, submit
 from .services.presentation import STYLE_PRESETS, available_styles, prepare_presentation_scene
 from .services.rendering_v20 import render_presentation_views
 
 
 router = APIRouter()
+PRESENTATION_JOB_KIND = "architectural_presentation"
 
 
 class PresentationRenderRequest(BaseModel):
@@ -33,15 +35,45 @@ def _project_or_404(project_id: str) -> Project:
         raise HTTPException(status_code=404, detail="Project not found")
 
 
+def _latest_presentation_path(project_id: str) -> Path:
+    return project_dir(project_id) / "working" / "presentation-latest.json"
+
+
 def _remove_failed_outputs(output_dir: Path, archive: Path, temporary_archive: Path) -> None:
     shutil.rmtree(output_dir, ignore_errors=True)
     archive.unlink(missing_ok=True)
     temporary_archive.unlink(missing_ok=True)
 
 
+def _load_latest_presentation(project_id: str) -> dict[str, Any] | None:
+    pointer = _latest_presentation_path(project_id)
+    if not pointer.exists():
+        return None
+    try:
+        payload = json.loads(pointer.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        pointer.unlink(missing_ok=True)
+        return None
+    if not isinstance(payload, dict):
+        pointer.unlink(missing_ok=True)
+        return None
+
+    required_paths = [payload.get("top_down_path"), payload.get("perspective_path"), payload.get("bundle_path")]
+    if not all(isinstance(value, str) and Path(value).is_file() for value in required_paths):
+        pointer.unlink(missing_ok=True)
+        return None
+    return payload
+
+
 @router.get("/api/v1/design-styles")
 def design_styles() -> dict[str, object]:
     return {"styles": available_styles(), "default": "modern"}
+
+
+@router.get("/api/v1/projects/{project_id}/presentation-latest")
+def latest_presentation(project_id: str) -> dict[str, object]:
+    _project_or_404(project_id)
+    return {"presentation": _load_latest_presentation(project_id)}
 
 
 @router.post("/api/v1/projects/{project_id}/presentation-renders", response_model=Job)
@@ -52,7 +84,11 @@ def create_presentation_renders(project_id: str, request: PresentationRenderRequ
     if request.style not in STYLE_PRESETS:
         raise HTTPException(status_code=422, detail=f"Unknown design style: {request.style}")
 
-    job = create_job(project_id, "architectural_presentation")
+    existing = find_active_job(project_id, PRESENTATION_JOB_KIND)
+    if existing is not None:
+        return existing
+
+    job = create_job(project_id, PRESENTATION_JOB_KIND)
     output_dir = project_dir(project_id) / "outputs" / f"presentation-{job.id[:8]}"
     scene_path = output_dir / "presentation-scene.json"
     top_down = output_dir / "top-down.png"
@@ -88,6 +124,7 @@ def create_presentation_renders(project_id: str, request: PresentationRenderRequ
             perspective_url = f"{url_root}/{perspective.name}"
             result_metadata = {
                 **metadata,
+                "job_id": job.id,
                 "quality": request.quality,
                 "engine": request.engine,
                 "top_down_url": top_url,
@@ -108,6 +145,7 @@ def create_presentation_renders(project_id: str, request: PresentationRenderRequ
             if not temporary_archive.exists() or temporary_archive.stat().st_size < 128:
                 raise RuntimeError("Presentation archive was not created correctly")
             temporary_archive.replace(archive)
+            write_json(_latest_presentation_path(project_id), result_metadata)
             return archive, archive_url, result_metadata
         except Exception:
             _remove_failed_outputs(output_dir, archive, temporary_archive)
