@@ -1,10 +1,19 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
+from app import storage
 from app.models import ArchitecturalObject, Opening, ProjectMetadata, RoomShape, SceneManifest, WallSegment
-from app.presentation_api import _remove_failed_outputs, _request_dedupe_key, _scene_fingerprint, PresentationRenderRequest
+from app.presentation_api import (
+    PresentationRenderRequest,
+    _latest_presentation_path,
+    _publish_latest_presentation,
+    _remove_failed_outputs,
+    _request_dedupe_key,
+    _scene_fingerprint,
+)
 from app.services.jobs import JOBS, LOCK, create_unique_job, update_job
 from app.services.presentation import STYLE_PRESETS, prepare_presentation_scene
 from app.services.rendering_v20 import PNG_SIGNATURE, _validate_png
@@ -135,32 +144,44 @@ def main() -> None:
     with LOCK:
         JOBS.clear()
 
+    original_projects_dir = storage.PROJECTS_DIR
     with TemporaryDirectory() as temporary:
         root = Path(temporary)
-        valid_png = root / "valid.png"
-        valid_png.write_bytes(PNG_SIGNATURE + b"0" * 128)
-        _validate_png(valid_png, "top_down")
+        storage.PROJECTS_DIR = root / "projects"
+        try:
+            newer = {"job_id": "newer", "requested_at": "2026-07-17T10:00:02+00:00"}
+            older = {"job_id": "older", "requested_at": "2026-07-17T10:00:01+00:00"}
+            assert _publish_latest_presentation("presentation-smoke", newer) is True
+            assert _publish_latest_presentation("presentation-smoke", older) is False
+            persisted = json.loads(_latest_presentation_path("presentation-smoke").read_text(encoding="utf-8"))
+            assert persisted["job_id"] == "newer", "A slower older render must not replace the latest result."
 
-        invalid_png = root / "invalid.png"
-        invalid_png.write_bytes(b"not-a-png" * 20)
-        _expect_runtime_error(
-            lambda: _validate_png(invalid_png, "perspective"),
-            "Invalid Blender output must be rejected.",
-        )
+            valid_png = root / "valid.png"
+            valid_png.write_bytes(PNG_SIGNATURE + b"0" * 128)
+            _validate_png(valid_png, "top_down")
 
-        output_dir = root / "presentation-partial"
-        output_dir.mkdir()
-        (output_dir / "partial.png").write_bytes(b"partial")
-        archive = root / "presentation-partial.zip"
-        temporary_archive = root / ".presentation-partial.zip.tmp"
-        archive.write_bytes(b"partial")
-        temporary_archive.write_bytes(b"partial")
-        _remove_failed_outputs(output_dir, archive, temporary_archive)
-        assert not output_dir.exists()
-        assert not archive.exists()
-        assert not temporary_archive.exists()
+            invalid_png = root / "invalid.png"
+            invalid_png.write_bytes(b"not-a-png" * 20)
+            _expect_runtime_error(
+                lambda: _validate_png(invalid_png, "perspective"),
+                "Invalid Blender output must be rejected.",
+            )
 
-    print("Presentation smoke test passed: 19 styles, scene revision invalidation, duplicate-job suppression, text-free geometry, practical dining flow, PNG validation and failed-output cleanup.")
+            output_dir = root / "presentation-partial"
+            output_dir.mkdir()
+            (output_dir / "partial.png").write_bytes(b"partial")
+            archive = root / "presentation-partial.zip"
+            temporary_archive = root / ".presentation-partial.zip.tmp"
+            archive.write_bytes(b"partial")
+            temporary_archive.write_bytes(b"partial")
+            _remove_failed_outputs(output_dir, archive, temporary_archive)
+            assert not output_dir.exists()
+            assert not archive.exists()
+            assert not temporary_archive.exists()
+        finally:
+            storage.PROJECTS_DIR = original_projects_dir
+
+    print("Presentation smoke test passed: 19 styles, scene revision invalidation, duplicate-job suppression, ordered latest publication, text-free geometry, practical dining flow, PNG validation and failed-output cleanup.")
 
 
 if __name__ == "__main__":
