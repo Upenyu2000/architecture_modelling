@@ -10,6 +10,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -56,6 +57,9 @@ fun FloorPlanCanvas(
 ) {
     var canvasSize by remember { mutableStateOf(IntSize.Zero) }
     val sourceImage = remember(sourceBitmap) { sourceBitmap?.asImageBitmap() }
+    val latestScene by rememberUpdatedState(scene)
+    val latestOnSelectRoom by rememberUpdatedState(onSelectRoom)
+    val latestOnMoveSelectedRoom by rememberUpdatedState(onMoveSelectedRoom)
     val background = Color(0xFFF4F4F5)
     val floorColor = parseColor(scene.materials.floorGlobal.hexColor, Color(0xFFD7B38A))
     val wallColor = parseColor(scene.materials.wallsGlobal.hexColor, Color(0xFFF3F0EA))
@@ -69,21 +73,21 @@ fun FloorPlanCanvas(
         modifier = modifier
             .background(background)
             .onSizeChanged { canvasSize = it }
-            .pointerInput(scene, selectedRoomId, renderMode, viewport) {
+            .pointerInput(renderMode, viewport) {
                 if (renderMode != RenderMode.PLAN || viewport == null) return@pointerInput
                 var dragRoomId: String? = null
                 detectDragGestures(
                     onDragStart = { start ->
                         val (x, z) = viewport.toWorld(start)
-                        dragRoomId = scene.rooms.lastOrNull { SceneGeometry.contains(it.polygon, x, z) }?.id
-                        onSelectRoom(dragRoomId)
+                        dragRoomId = latestScene.rooms.lastOrNull { SceneGeometry.contains(it.polygon, x, z) }?.id
+                        latestOnSelectRoom(dragRoomId)
                     },
                     onDragEnd = { dragRoomId = null },
                     onDragCancel = { dragRoomId = null },
                     onDrag = { change, amount ->
                         change.consume()
                         if (dragRoomId != null) {
-                            onMoveSelectedRoom(
+                            latestOnMoveSelectedRoom(
                                 (amount.x / viewport.scale).toDouble(),
                                 (amount.y / viewport.scale).toDouble(),
                             )
