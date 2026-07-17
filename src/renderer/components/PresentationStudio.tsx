@@ -30,77 +30,146 @@ interface Props {
 
 type PresentationView = 'top_down' | 'perspective';
 
+type StartedConfiguration = {
+  style: DesignStyle;
+  quality: RenderQuality;
+};
+
+function safeDownloadName(value: string | undefined): string {
+  const normalized = (value || 'dream-home')
+    .normalize('NFKD')
+    .replace(/[^a-zA-Z0-9._-]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 80);
+  return normalized || 'dream-home';
+}
+
+function clampProgress(value: number | undefined): number {
+  return Math.max(0, Math.min(100, Number.isFinite(value) ? Number(value) : 0));
+}
+
 export function PresentationStudio({ project, disabled = false }: Props) {
   const [style, setStyle] = useState<DesignStyle>('modern');
   const [quality, setQuality] = useState<RenderQuality>('1080p');
   const [engine, setEngine] = useState<PresentationEngine>('auto');
-  const [job, setJob] = useState<Job | null>(null);
+  const [activeJob, setActiveJob] = useState<Job | null>(null);
+  const [completedJob, setCompletedJob] = useState<Job | null>(null);
   const [activeView, setActiveView] = useState<PresentationView>('top_down');
   const [error, setError] = useState('');
+  const [generationStarting, setGenerationStarting] = useState(false);
+  const [startedConfiguration, setStartedConfiguration] = useState<StartedConfiguration | null>(null);
   const pollRef = useRef<number | null>(null);
+  const runRevisionRef = useRef(0);
+  const mountedRef = useRef(true);
 
-  const metadata = (job?.metadata ?? {}) as PresentationRenderMetadata;
+  const resultJob = activeJob?.status === 'completed' ? activeJob : completedJob;
+  const metadata = (resultJob?.metadata ?? {}) as PresentationRenderMetadata;
   const topDownUrl = absoluteUrl(metadata.top_down_url);
   const perspectiveUrl = absoluteUrl(metadata.perspective_url);
-  const bundleUrl = absoluteUrl(metadata.bundle_url ?? job?.output_url);
+  const bundleUrl = absoluteUrl(metadata.bundle_url ?? resultJob?.output_url);
   const sourceUrl = absoluteUrl(project?.floorplan?.preview_url);
   const activeRenderUrl = activeView === 'top_down' ? topDownUrl : perspectiveUrl;
-  const isRunning = job?.status === 'queued' || job?.status === 'running';
+  const isRunning = activeJob?.status === 'queued' || activeJob?.status === 'running';
+  const controlsLocked = disabled || isRunning || generationStarting;
   const selectedStyle = useMemo(
     () => DESIGN_STYLES.find((option) => option.value === style) ?? DESIGN_STYLES[0],
     [style],
   );
-
-  useEffect(() => () => {
-    if (pollRef.current) window.clearInterval(pollRef.current);
-  }, []);
+  const downloadBase = safeDownloadName(project?.name);
 
   const stopPolling = () => {
-    if (pollRef.current) window.clearInterval(pollRef.current);
+    if (pollRef.current !== null) window.clearTimeout(pollRef.current);
     pollRef.current = null;
   };
 
-  const watchJob = (created: Job) => {
-    setJob(created);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      runRevisionRef.current += 1;
+      stopPolling();
+    };
+  }, []);
+
+  useEffect(() => {
+    runRevisionRef.current += 1;
     stopPolling();
-    pollRef.current = window.setInterval(async () => {
+    setActiveJob(null);
+    setCompletedJob(null);
+    setActiveView('top_down');
+    setError('');
+    setGenerationStarting(false);
+    setStartedConfiguration(null);
+  }, [project?.id]);
+
+  const schedulePoll = (jobId: string, revision: number) => {
+    stopPolling();
+    pollRef.current = window.setTimeout(async () => {
+      if (!mountedRef.current || revision !== runRevisionRef.current) return;
       try {
-        const latest = await api.getJob(created.id);
-        setJob(latest);
+        const latest = await api.getJob(jobId);
+        if (!mountedRef.current || revision !== runRevisionRef.current) return;
+        setActiveJob(latest);
         if (latest.status === 'completed') {
-          stopPolling();
+          setCompletedJob(latest);
           setActiveView('top_down');
-        } else if (latest.status === 'failed') {
+          stopPolling();
+          return;
+        }
+        if (latest.status === 'failed') {
           stopPolling();
           setError(latest.error || latest.message || 'Presentation rendering failed.');
+          return;
         }
+        schedulePoll(jobId, revision);
       } catch (pollError) {
+        if (!mountedRef.current || revision !== runRevisionRef.current) return;
         stopPolling();
         setError(pollError instanceof Error ? pollError.message : String(pollError));
       }
     }, 1000);
   };
 
+  const watchJob = (created: Job, revision: number) => {
+    if (!mountedRef.current || revision !== runRevisionRef.current) return;
+    setActiveJob(created);
+    schedulePoll(created.id, revision);
+  };
+
   const generate = async () => {
-    if (!project?.scene || disabled || isRunning) return;
+    if (!project?.scene || controlsLocked) return;
+    const projectId = project.id;
+    const revision = runRevisionRef.current + 1;
+    runRevisionRef.current = revision;
+    stopPolling();
     setError('');
-    setJob(null);
+    setGenerationStarting(true);
+    setStartedConfiguration({ style, quality });
     try {
-      watchJob(await api.presentationRenders(project.id, style, quality, engine));
+      const created = await api.presentationRenders(projectId, style, quality, engine);
+      if (!mountedRef.current || revision !== runRevisionRef.current || project.id !== projectId) return;
+      watchJob(created, revision);
     } catch (generationError) {
+      if (!mountedRef.current || revision !== runRevisionRef.current) return;
       setError(generationError instanceof Error ? generationError.message : String(generationError));
+    } finally {
+      if (mountedRef.current && revision === runRevisionRef.current) setGenerationStarting(false);
     }
   };
 
-  const download = (url: string | undefined, suffix: string) => {
+  const download = (url: string | undefined, suffix: string, extension = 'png') => {
     if (!url) return;
     const link = document.createElement('a');
     link.href = url;
-    link.download = `${project?.name || 'dream-home'}-${suffix}.png`;
+    link.download = `${downloadBase}-${suffix}.${extension}`;
+    link.rel = 'noopener';
     document.body.appendChild(link);
     link.click();
     link.remove();
   };
+
+  const progress = clampProgress(activeJob?.progress);
+  const runningStyle = startedConfiguration?.style ?? style;
 
   return (
     <section className="presentation-studio roomify-panel">
@@ -116,14 +185,14 @@ export function PresentationStudio({ project, disabled = false }: Props) {
       <div className="presentation-controls">
         <label>
           Design style
-          <select value={style} onChange={(event) => setStyle(event.target.value as DesignStyle)}>
+          <select disabled={controlsLocked} value={style} onChange={(event) => setStyle(event.target.value as DesignStyle)}>
             {DESIGN_STYLES.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
           </select>
           <small>{selectedStyle.description}</small>
         </label>
         <label>
           Output quality
-          <select value={quality} onChange={(event) => setQuality(event.target.value as RenderQuality)}>
+          <select disabled={controlsLocked} value={quality} onChange={(event) => setQuality(event.target.value as RenderQuality)}>
             <option value="preview">Preview</option>
             <option value="1080p">Presentation HD</option>
             <option value="4k">4K presentation</option>
@@ -132,8 +201,8 @@ export function PresentationStudio({ project, disabled = false }: Props) {
         </label>
         <label>
           Photoreal engine
-          <select value={engine} onChange={(event) => setEngine(event.target.value as PresentationEngine)}>
-            <option value="auto">Auto-detect Blender</option>
+          <select disabled={controlsLocked} value={engine} onChange={(event) => setEngine(event.target.value as PresentationEngine)}>
+            <option value="auto">Use configured Blender</option>
             <option value="blender">Require Blender 4.x</option>
           </select>
           <small>Blender produces PBR materials, realistic shadows and interior lighting.</small>
@@ -141,33 +210,33 @@ export function PresentationStudio({ project, disabled = false }: Props) {
         <Button
           size="lg"
           className="presentation-generate"
-          disabled={disabled || !project?.scene || isRunning}
+          disabled={controlsLocked || !project?.scene}
           onClick={() => void generate()}
         >
-          {isRunning ? <RefreshCcw className="spin" size={18} /> : <Sparkles size={18} />}
-          {isRunning ? 'Rendering both views' : `Generate ${styleLabel(style)} presentation`}
+          {isRunning || generationStarting ? <RefreshCcw className="spin" size={18} /> : <Sparkles size={18} />}
+          {generationStarting ? 'Starting renderer' : isRunning ? 'Rendering both views' : `Generate ${styleLabel(style)} presentation`}
         </Button>
       </div>
 
-      {job ? (
-        <div className={`presentation-progress ${job.status}`}>
+      {activeJob ? (
+        <div className={`presentation-progress ${activeJob.status}`} role="status" aria-live="polite">
           <div>
-            {job.status === 'completed' ? <CheckCircle2 size={18} /> : <RefreshCcw className={isRunning ? 'spin' : ''} size={18} />}
-            <span>{job.message}</span>
+            {activeJob.status === 'completed' ? <CheckCircle2 size={18} /> : activeJob.status === 'failed' ? <AlertCircle size={18} /> : <RefreshCcw className="spin" size={18} />}
+            <span>{activeJob.message}</span>
           </div>
-          <div className="presentation-progress-track"><i style={{ width: `${job.progress}%` }} /></div>
-          <strong>{job.progress}%</strong>
+          <div className="presentation-progress-track"><i style={{ width: `${progress}%` }} /></div>
+          <strong>{progress}%</strong>
         </div>
       ) : null}
 
-      {error ? <div className="presentation-error"><AlertCircle size={18} /> {error}</div> : null}
+      {error ? <div className="presentation-error" role="alert"><AlertCircle size={18} /> <span>{error}</span></div> : null}
 
       <div className="presentation-stage">
-        <div className="presentation-view-tabs" role="tablist">
-          <button className={activeView === 'top_down' ? 'active' : ''} onClick={() => setActiveView('top_down')}>
+        <div className="presentation-view-tabs" role="tablist" aria-label="Presentation view">
+          <button type="button" role="tab" aria-selected={activeView === 'top_down'} className={activeView === 'top_down' ? 'active' : ''} onClick={() => setActiveView('top_down')}>
             <ImageIcon size={16} /> Top-down layout
           </button>
-          <button className={activeView === 'perspective' ? 'active' : ''} onClick={() => setActiveView('perspective')}>
+          <button type="button" role="tab" aria-selected={activeView === 'perspective'} className={activeView === 'perspective' ? 'active' : ''} onClick={() => setActiveView('perspective')}>
             <Camera size={16} /> Eye-level interior
           </button>
         </div>
@@ -183,11 +252,11 @@ export function PresentationStudio({ project, disabled = false }: Props) {
           ) : (
             <div className="presentation-empty"><ImageIcon size={34} /><strong>Upload and analyse a floor plan first</strong></div>
           )}
-          {isRunning ? (
+          {isRunning || generationStarting ? (
             <div className="presentation-render-overlay">
               <RefreshCcw className="spin" size={34} />
-              <strong>{job?.message || 'Building presentation scene'}</strong>
-              <span>Applying {styleLabel(style)} materials, furniture and lighting.</span>
+              <strong>{activeJob?.message || 'Starting architectural renderer'}</strong>
+              <span>Applying {styleLabel(runningStyle)} materials, furniture and lighting.</span>
             </div>
           ) : null}
         </div>
@@ -197,13 +266,13 @@ export function PresentationStudio({ project, disabled = false }: Props) {
             <Button variant="secondary" size="sm" disabled={!activeRenderUrl} onClick={() => download(activeRenderUrl, activeView)}>
               <Download size={15} /> Download current PNG
             </Button>
-            {bundleUrl ? <a className="btn btn--outline btn--sm" href={bundleUrl} download><Download size={15} /> Download presentation ZIP</a> : null}
+            {bundleUrl ? <button type="button" className="btn btn--outline btn--sm" onClick={() => download(bundleUrl, 'presentation', 'zip')}><Download size={15} /> Download presentation ZIP</button> : null}
             {activeRenderUrl ? <a className="btn btn--ghost btn--sm" href={activeRenderUrl} target="_blank" rel="noreferrer"><Maximize2 size={15} /> Open full size</a> : null}
           </div>
         ) : null}
       </div>
 
-      {job?.status === 'completed' ? (
+      {resultJob?.status === 'completed' ? (
         <div className="presentation-summary">
           <article><strong>{metadata.style_label || styleLabel(style)}</strong><span>Design language</span></article>
           <article><strong>{metadata.perspective_room || 'Best interior room'}</strong><span>Perspective vantage</span></article>
