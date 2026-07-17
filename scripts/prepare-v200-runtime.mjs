@@ -28,17 +28,45 @@ app = app.replace(
   '<span>Roomify Studio 2.0</span>',
 );
 
-if (!app.includes('<PresentationStudio project={project} disabled={busy} />')) {
+if (!app.includes('const interactionLocked = busy || backgroundJobRunning;')) {
   app = replaceOne(
     app,
-    /          <section className="output-panel">/,
-    '          <PresentationStudio project={project} disabled={busy} />\n          <section className="output-panel">',
-    'presentation studio placement',
+    /  const jobProgress = clampProgress\(job\?\.progress\);/,
+    `  const backgroundJobRunning = job?.status === 'queued' || job?.status === 'running';
+  const interactionLocked = busy || backgroundJobRunning;
+  const jobProgress = clampProgress(job?.progress);`,
+    'background job interaction lock',
   );
+}
+
+// Keep all project-mutating controls disabled until drawing, render and video
+// jobs reach a terminal state. These replacements are intentionally idempotent.
+app = app.replaceAll('busy={busy}', 'busy={interactionLocked}');
+app = app.replaceAll('disabled={busy ||', 'disabled={interactionLocked ||');
+app = app.replaceAll('disabled={busy}', 'disabled={interactionLocked}');
+app = app.replaceAll('!busy &&', '!interactionLocked &&');
+
+if (!app.includes('<PresentationStudio project={project} disabled={interactionLocked} />')) {
+  if (app.includes('<PresentationStudio project={project} disabled={busy} />')) {
+    app = app.replace(
+      '<PresentationStudio project={project} disabled={busy} />',
+      '<PresentationStudio project={project} disabled={interactionLocked} />',
+    );
+  } else {
+    app = replaceOne(
+      app,
+      /          <section className="output-panel">/,
+      '          <PresentationStudio project={project} disabled={interactionLocked} />\n          <section className="output-panel">',
+      'presentation studio placement',
+    );
+  }
 }
 
 if (!app.includes('<span>Roomify Studio 2.0</span>')) {
   throw new Error('2.0 runtime patch could not update the visible application release label.');
+}
+if (!app.includes('const interactionLocked = busy || backgroundJobRunning;')) {
+  throw new Error('2.0 runtime patch could not activate the background-job interaction lock.');
 }
 await writeFile(appPath, app, 'utf8');
 
@@ -95,4 +123,4 @@ if (!types.includes('metadata?: Record<string, unknown>;')) {
 }
 await writeFile(typesPath, types, 'utf8');
 
-console.log('Prepared Roomify Studio 2.0 with persistent dual presentation rendering, Roomify visual design and local Blender orchestration.');
+console.log('Prepared Roomify Studio 2.0 with persistent dual rendering, background-job locks, Roomify visual design and local Blender orchestration.');
