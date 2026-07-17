@@ -44,11 +44,23 @@ await writeFile(appPath, app, 'utf8');
 
 const apiPath = path.join(root, 'src', 'renderer', 'lib', 'api.ts');
 let api = (await readFile(apiPath, 'utf8')).replace(/\r\n/g, '\n');
-if (!api.includes('presentationRenders:')) {
+if (!api.includes('getLatestPresentation:')) {
   api = replaceOne(
     api,
     /  render: \(id: string, quality: 'preview' \| '1080p' \| '4k', engine: 'auto' \| 'technical' \| 'blender'\) =>/,
-    `  presentationRenders: (
+    `  getLatestPresentation: (id: string) =>
+    request<{ presentation?: Record<string, unknown> | null }>(\`/api/v1/projects/\${id}/presentation-latest\`, { timeoutMs: 30 * 1000 }),
+  render: (id: string, quality: 'preview' | '1080p' | '4k', engine: 'auto' | 'technical' | 'blender') =>`,
+    'latest presentation API action',
+  );
+}
+if (!api.includes('presentationRenders:')) {
+  api = replaceOne(
+    api,
+    /  getLatestPresentation: \(id: string\) =>[\s\S]*?\n  render: \(id: string, quality: 'preview' \| '1080p' \| '4k', engine: 'auto' \| 'technical' \| 'blender'\) =>/,
+    `  getLatestPresentation: (id: string) =>
+    request<{ presentation?: Record<string, unknown> | null }>(\`/api/v1/projects/\${id}/presentation-latest\`, { timeoutMs: 30 * 1000 }),
+  presentationRenders: (
     id: string,
     style: string,
     quality: 'preview' | '1080p' | '4k',
@@ -61,6 +73,9 @@ if (!api.includes('presentationRenders:')) {
   render: (id: string, quality: 'preview' | '1080p' | '4k', engine: 'auto' | 'technical' | 'blender') =>`,
     'presentation render API action',
   );
+}
+if (!api.includes('getLatestPresentation:') || !api.includes('presentationRenders:')) {
+  throw new Error('2.0 runtime patch could not activate presentation API actions.');
 }
 await writeFile(apiPath, api, 'utf8');
 
@@ -80,4 +95,4 @@ if (!types.includes('metadata?: Record<string, unknown>;')) {
 }
 await writeFile(typesPath, types, 'utf8');
 
-console.log('Prepared Roomify Studio 2.0 with dual presentation rendering, Roomify visual design and local Blender orchestration.');
+console.log('Prepared Roomify Studio 2.0 with persistent dual presentation rendering, Roomify visual design and local Blender orchestration.');
