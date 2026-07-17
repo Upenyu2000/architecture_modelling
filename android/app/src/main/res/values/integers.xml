@@ -1,4 +1,0 @@
-<resources>
-    <integer name="maximum_json_size_mb">10</integer>
-    <integer name="maximum_image_size_mb">40</integer>
-</resources>

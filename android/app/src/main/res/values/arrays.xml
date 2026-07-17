@@ -1,9 +1,0 @@
-<resources>
-    <string-array name="supported_floorplan_extensions">
-        <item>png</item>
-        <item>jpg</item>
-        <item>jpeg</item>
-        <item>webp</item>
-        <item>json</item>
-    </string-array>
-</resources>
