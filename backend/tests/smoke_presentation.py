@@ -4,7 +4,8 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 
 from app.models import ArchitecturalObject, Opening, ProjectMetadata, RoomShape, SceneManifest, WallSegment
-from app.presentation_api import _remove_failed_outputs
+from app.presentation_api import _remove_failed_outputs, _request_dedupe_key, _scene_fingerprint, PresentationRenderRequest
+from app.services.jobs import JOBS, LOCK, create_unique_job, update_job
 from app.services.presentation import STYLE_PRESETS, prepare_presentation_scene
 from app.services.rendering_v20 import PNG_SIGNATURE, _validate_png
 
@@ -107,6 +108,33 @@ def main() -> None:
     assert "|scandinavian|" in rendered_table["asset_id"]
     assert not any(item["object_type"] == "dining_chair" for item in payload["fixtures_and_furniture"]), "Dining chairs are generated around the optimised table and must not be duplicated."
 
+    fingerprint = _scene_fingerprint(scene)
+    changed_scene = scene.model_copy(deep=True)
+    changed_scene.rooms[0].name = "Changed Dining Room"
+    assert _scene_fingerprint(changed_scene) != fingerprint, "A changed plan must invalidate its persisted render."
+
+    request = PresentationRenderRequest(style="modern", quality="1080p", engine="auto")
+    dedupe_key = _request_dedupe_key(fingerprint, request)
+    assert dedupe_key == _request_dedupe_key(fingerprint, request)
+    assert dedupe_key != _request_dedupe_key(fingerprint, PresentationRenderRequest(style="coastal"))
+
+    with LOCK:
+        JOBS.clear()
+    first, first_created = create_unique_job("presentation-smoke", "architectural_presentation", dedupe_key)
+    duplicate, duplicate_created = create_unique_job("presentation-smoke", "architectural_presentation", dedupe_key)
+    assert first_created is True
+    assert duplicate_created is False
+    assert duplicate.id == first.id
+    changed, changed_created = create_unique_job("presentation-smoke", "architectural_presentation", "changed-revision")
+    assert changed_created is True
+    assert changed.id != first.id
+    update_job(first.id, 100, "Complete", status="completed")
+    replacement, replacement_created = create_unique_job("presentation-smoke", "architectural_presentation", dedupe_key)
+    assert replacement_created is True
+    assert replacement.id != first.id
+    with LOCK:
+        JOBS.clear()
+
     with TemporaryDirectory() as temporary:
         root = Path(temporary)
         valid_png = root / "valid.png"
@@ -132,7 +160,7 @@ def main() -> None:
         assert not archive.exists()
         assert not temporary_archive.exists()
 
-    print("Presentation smoke test passed: 19 styles, text-free geometry, practical dining flow, interior camera, PNG validation and failed-output cleanup.")
+    print("Presentation smoke test passed: 19 styles, scene revision invalidation, duplicate-job suppression, text-free geometry, practical dining flow, PNG validation and failed-output cleanup.")
 
 
 if __name__ == "__main__":
