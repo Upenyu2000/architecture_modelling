@@ -99,17 +99,21 @@ def create_presentation_renders(project_id: str, request: PresentationRenderRequ
     if request.style not in STYLE_PRESETS:
         raise HTTPException(status_code=422, detail=f"Unknown design style: {request.style}")
 
-    job, created = create_unique_job(project_id, PRESENTATION_JOB_KIND)
+    started_scene_fingerprint = _scene_fingerprint(project.scene)
+    job, created = create_unique_job(
+        project_id,
+        PRESENTATION_JOB_KIND,
+        dedupe_key=started_scene_fingerprint,
+        initial_metadata={
+            "style": request.style,
+            "quality": request.quality,
+            "engine": request.engine,
+            "scene_fingerprint": started_scene_fingerprint,
+        },
+    )
     if not created:
         return job
 
-    started_scene_fingerprint = _scene_fingerprint(project.scene)
-    job.metadata = {
-        "style": request.style,
-        "quality": request.quality,
-        "engine": request.engine,
-        "scene_fingerprint": started_scene_fingerprint,
-    }
     output_dir = project_dir(project_id) / "outputs" / f"presentation-{job.id[:8]}"
     scene_path = output_dir / "presentation-scene.json"
     top_down = output_dir / "top-down.png"
