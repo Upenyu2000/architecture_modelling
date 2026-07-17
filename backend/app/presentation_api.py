@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import shutil
 import zipfile
@@ -9,9 +10,9 @@ from typing import Any, Literal
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
-from .models import Job, Project
+from .models import Job, Project, SceneManifest
 from .storage import load_project, project_dir, write_json
-from .services.jobs import create_job, find_active_job, submit
+from .services.jobs import create_unique_job, submit
 from .services.presentation import STYLE_PRESETS, available_styles, prepare_presentation_scene
 from .services.rendering_v20 import render_presentation_views
 
@@ -35,6 +36,16 @@ def _project_or_404(project_id: str) -> Project:
         raise HTTPException(status_code=404, detail="Project not found")
 
 
+def _scene_fingerprint(scene: SceneManifest) -> str:
+    canonical = json.dumps(
+        scene.model_dump(mode="json"),
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
+    ).encode("utf-8")
+    return hashlib.sha256(canonical).hexdigest()
+
+
 def _latest_presentation_path(project_id: str) -> Path:
     return project_dir(project_id) / "working" / "presentation-latest.json"
 
@@ -45,9 +56,9 @@ def _remove_failed_outputs(output_dir: Path, archive: Path, temporary_archive: P
     temporary_archive.unlink(missing_ok=True)
 
 
-def _load_latest_presentation(project_id: str) -> dict[str, Any] | None:
-    pointer = _latest_presentation_path(project_id)
-    if not pointer.exists():
+def _load_latest_presentation(project: Project) -> dict[str, Any] | None:
+    pointer = _latest_presentation_path(project.id)
+    if not pointer.exists() or project.scene is None:
         return None
     try:
         payload = json.loads(pointer.read_text(encoding="utf-8"))
@@ -55,6 +66,10 @@ def _load_latest_presentation(project_id: str) -> dict[str, Any] | None:
         pointer.unlink(missing_ok=True)
         return None
     if not isinstance(payload, dict):
+        pointer.unlink(missing_ok=True)
+        return None
+
+    if payload.get("scene_fingerprint") != _scene_fingerprint(project.scene):
         pointer.unlink(missing_ok=True)
         return None
 
@@ -72,8 +87,8 @@ def design_styles() -> dict[str, object]:
 
 @router.get("/api/v1/projects/{project_id}/presentation-latest")
 def latest_presentation(project_id: str) -> dict[str, object]:
-    _project_or_404(project_id)
-    return {"presentation": _load_latest_presentation(project_id)}
+    project = _project_or_404(project_id)
+    return {"presentation": _load_latest_presentation(project)}
 
 
 @router.post("/api/v1/projects/{project_id}/presentation-renders", response_model=Job)
@@ -84,11 +99,17 @@ def create_presentation_renders(project_id: str, request: PresentationRenderRequ
     if request.style not in STYLE_PRESETS:
         raise HTTPException(status_code=422, detail=f"Unknown design style: {request.style}")
 
-    existing = find_active_job(project_id, PRESENTATION_JOB_KIND)
-    if existing is not None:
-        return existing
+    job, created = create_unique_job(project_id, PRESENTATION_JOB_KIND)
+    if not created:
+        return job
 
-    job = create_job(project_id, PRESENTATION_JOB_KIND)
+    started_scene_fingerprint = _scene_fingerprint(project.scene)
+    job.metadata = {
+        "style": request.style,
+        "quality": request.quality,
+        "engine": request.engine,
+        "scene_fingerprint": started_scene_fingerprint,
+    }
     output_dir = project_dir(project_id) / "outputs" / f"presentation-{job.id[:8]}"
     scene_path = output_dir / "presentation-scene.json"
     top_down = output_dir / "top-down.png"
@@ -120,6 +141,12 @@ def create_presentation_renders(project_id: str, request: PresentationRenderRequ
                 progress,
             )
 
+            current_project = load_project(project_id)
+            if current_project.scene is None or _scene_fingerprint(current_project.scene) != started_scene_fingerprint:
+                raise RuntimeError(
+                    "The floor plan changed while the presentation was rendering. The stale output was discarded; generate it again."
+                )
+
             top_url = f"{url_root}/{top_down.name}"
             perspective_url = f"{url_root}/{perspective.name}"
             result_metadata = {
@@ -127,6 +154,7 @@ def create_presentation_renders(project_id: str, request: PresentationRenderRequ
                 "job_id": job.id,
                 "quality": request.quality,
                 "engine": request.engine,
+                "scene_fingerprint": started_scene_fingerprint,
                 "top_down_url": top_url,
                 "top_down_path": str(top_down),
                 "perspective_url": perspective_url,
