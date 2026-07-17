@@ -48,22 +48,29 @@ function clampProgress(value: number | undefined): number {
   return Math.max(0, Math.min(100, Number.isFinite(value) ? Number(value) : 0));
 }
 
+function hasPresentation(metadata: PresentationRenderMetadata | null): metadata is PresentationRenderMetadata {
+  return Boolean(metadata?.top_down_url || metadata?.perspective_url || metadata?.bundle_url);
+}
+
 export function PresentationStudio({ project, disabled = false }: Props) {
   const [style, setStyle] = useState<DesignStyle>('modern');
   const [quality, setQuality] = useState<RenderQuality>('1080p');
   const [engine, setEngine] = useState<PresentationEngine>('auto');
   const [activeJob, setActiveJob] = useState<Job | null>(null);
   const [completedJob, setCompletedJob] = useState<Job | null>(null);
+  const [persistedMetadata, setPersistedMetadata] = useState<PresentationRenderMetadata | null>(null);
   const [activeView, setActiveView] = useState<PresentationView>('top_down');
   const [error, setError] = useState('');
   const [generationStarting, setGenerationStarting] = useState(false);
+  const [loadingPersistedResult, setLoadingPersistedResult] = useState(false);
   const [startedConfiguration, setStartedConfiguration] = useState<StartedConfiguration | null>(null);
   const pollRef = useRef<number | null>(null);
   const runRevisionRef = useRef(0);
   const mountedRef = useRef(true);
 
   const resultJob = activeJob?.status === 'completed' ? activeJob : completedJob;
-  const metadata = (resultJob?.metadata ?? {}) as PresentationRenderMetadata;
+  const jobMetadata = (resultJob?.metadata ?? {}) as PresentationRenderMetadata;
+  const metadata = hasPresentation(jobMetadata) ? jobMetadata : persistedMetadata ?? {};
   const topDownUrl = absoluteUrl(metadata.top_down_url);
   const perspectiveUrl = absoluteUrl(metadata.perspective_url);
   const bundleUrl = absoluteUrl(metadata.bundle_url ?? resultJob?.output_url);
@@ -76,6 +83,7 @@ export function PresentationStudio({ project, disabled = false }: Props) {
     [style],
   );
   const downloadBase = safeDownloadName(project?.name);
+  const hasCompletedResult = Boolean(topDownUrl || perspectiveUrl);
 
   const stopPolling = () => {
     if (pollRef.current !== null) window.clearTimeout(pollRef.current);
@@ -92,14 +100,43 @@ export function PresentationStudio({ project, disabled = false }: Props) {
   }, []);
 
   useEffect(() => {
-    runRevisionRef.current += 1;
+    const revision = runRevisionRef.current + 1;
+    runRevisionRef.current = revision;
     stopPolling();
     setActiveJob(null);
     setCompletedJob(null);
+    setPersistedMetadata(null);
     setActiveView('top_down');
     setError('');
     setGenerationStarting(false);
     setStartedConfiguration(null);
+
+    const projectId = project?.id;
+    if (!projectId) {
+      setLoadingPersistedResult(false);
+      return;
+    }
+
+    setLoadingPersistedResult(true);
+    void api.getLatestPresentation(projectId)
+      .then((response) => {
+        if (!mountedRef.current || revision !== runRevisionRef.current) return;
+        const latest = (response.presentation ?? null) as PresentationRenderMetadata | null;
+        setPersistedMetadata(hasPresentation(latest) ? latest : null);
+        if (latest?.style && DESIGN_STYLES.some((option) => option.value === latest.style)) {
+          setStyle(latest.style as DesignStyle);
+        }
+        if (latest?.quality && ['preview', '1080p', '4k'].includes(latest.quality)) {
+          setQuality(latest.quality as RenderQuality);
+        }
+      })
+      .catch((loadError) => {
+        if (!mountedRef.current || revision !== runRevisionRef.current) return;
+        setError(loadError instanceof Error ? loadError.message : String(loadError));
+      })
+      .finally(() => {
+        if (mountedRef.current && revision === runRevisionRef.current) setLoadingPersistedResult(false);
+      });
   }, [project?.id]);
 
   const schedulePoll = (jobId: string, revision: number) => {
@@ -111,7 +148,9 @@ export function PresentationStudio({ project, disabled = false }: Props) {
         if (!mountedRef.current || revision !== runRevisionRef.current) return;
         setActiveJob(latest);
         if (latest.status === 'completed') {
+          const latestMetadata = (latest.metadata ?? {}) as PresentationRenderMetadata;
           setCompletedJob(latest);
+          if (hasPresentation(latestMetadata)) setPersistedMetadata(latestMetadata);
           setActiveView('top_down');
           stopPolling();
           return;
@@ -133,6 +172,16 @@ export function PresentationStudio({ project, disabled = false }: Props) {
   const watchJob = (created: Job, revision: number) => {
     if (!mountedRef.current || revision !== runRevisionRef.current) return;
     setActiveJob(created);
+    if (created.status === 'completed') {
+      const createdMetadata = (created.metadata ?? {}) as PresentationRenderMetadata;
+      setCompletedJob(created);
+      if (hasPresentation(createdMetadata)) setPersistedMetadata(createdMetadata);
+      return;
+    }
+    if (created.status === 'failed') {
+      setError(created.error || created.message || 'Presentation rendering failed.');
+      return;
+    }
     schedulePoll(created.id, revision);
   };
 
@@ -147,7 +196,7 @@ export function PresentationStudio({ project, disabled = false }: Props) {
     setStartedConfiguration({ style, quality });
     try {
       const created = await api.presentationRenders(projectId, style, quality, engine);
-      if (!mountedRef.current || revision !== runRevisionRef.current || project.id !== projectId) return;
+      if (!mountedRef.current || revision !== runRevisionRef.current) return;
       watchJob(created, revision);
     } catch (generationError) {
       if (!mountedRef.current || revision !== runRevisionRef.current) return;
@@ -227,6 +276,8 @@ export function PresentationStudio({ project, disabled = false }: Props) {
           <div className="presentation-progress-track"><i style={{ width: `${progress}%` }} /></div>
           <strong>{progress}%</strong>
         </div>
+      ) : loadingPersistedResult ? (
+        <div className="presentation-progress loading" role="status"><div><RefreshCcw className="spin" size={18} /><span>Loading the latest saved presentation</span></div></div>
       ) : null}
 
       {error ? <div className="presentation-error" role="alert"><AlertCircle size={18} /> <span>{error}</span></div> : null}
@@ -261,7 +312,7 @@ export function PresentationStudio({ project, disabled = false }: Props) {
           ) : null}
         </div>
 
-        {topDownUrl || perspectiveUrl ? (
+        {hasCompletedResult ? (
           <div className="presentation-output-actions">
             <Button variant="secondary" size="sm" disabled={!activeRenderUrl} onClick={() => download(activeRenderUrl, activeView)}>
               <Download size={15} /> Download current PNG
@@ -272,7 +323,7 @@ export function PresentationStudio({ project, disabled = false }: Props) {
         ) : null}
       </div>
 
-      {resultJob?.status === 'completed' ? (
+      {hasCompletedResult ? (
         <div className="presentation-summary">
           <article><strong>{metadata.style_label || styleLabel(style)}</strong><span>Design language</span></article>
           <article><strong>{metadata.perspective_room || 'Best interior room'}</strong><span>Perspective vantage</span></article>
