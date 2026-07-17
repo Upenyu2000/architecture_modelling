@@ -43,6 +43,11 @@ async def upload_storage_error(_request: Request, exc: UploadStorageError) -> JS
     return JSONResponse(status_code=exc.status_code, content={"detail": str(exc)})
 
 
+@app.exception_handler(FileNotFoundError)
+async def local_resource_not_found(_request: Request, _exc: FileNotFoundError) -> JSONResponse:
+    return JSONResponse(status_code=404, content={"detail": "Project or local resource not found"})
+
+
 @app.get("/health")
 def health() -> dict[str, Any]:
     return {"status": "ok", "service": APP_NAME, "version": APP_VERSION}
