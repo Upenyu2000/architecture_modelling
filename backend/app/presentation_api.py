@@ -46,6 +46,18 @@ def _scene_fingerprint(scene: SceneManifest) -> str:
     return hashlib.sha256(canonical).hexdigest()
 
 
+def _request_dedupe_key(scene_fingerprint: str, request: PresentationRenderRequest) -> str:
+    source = "|".join((
+        scene_fingerprint,
+        request.style,
+        request.quality,
+        request.engine,
+        "furnish" if request.auto_furnish else "no-furnish",
+        "dining" if request.optimize_dining else "no-dining",
+    ))
+    return hashlib.sha256(source.encode("utf-8")).hexdigest()
+
+
 def _latest_presentation_path(project_id: str) -> Path:
     return project_dir(project_id) / "working" / "presentation-latest.json"
 
@@ -100,10 +112,11 @@ def create_presentation_renders(project_id: str, request: PresentationRenderRequ
         raise HTTPException(status_code=422, detail=f"Unknown design style: {request.style}")
 
     started_scene_fingerprint = _scene_fingerprint(project.scene)
+    dedupe_key = _request_dedupe_key(started_scene_fingerprint, request)
     job, created = create_unique_job(
         project_id,
         PRESENTATION_JOB_KIND,
-        dedupe_key=started_scene_fingerprint,
+        dedupe_key=dedupe_key,
         initial_metadata={
             "style": request.style,
             "quality": request.quality,
