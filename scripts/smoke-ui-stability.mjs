@@ -14,11 +14,14 @@ const presentationConstants = readFileSync(new URL('../src/renderer/lib/presenta
 const runtimeStyles = readFileSync(new URL('../src/renderer/runtime-1.5.4.css', import.meta.url), 'utf8');
 const spawnStyles = readFileSync(new URL('../src/renderer/runtime-1.6.1.css', import.meta.url), 'utf8');
 const roomifyStyles = readFileSync(new URL('../src/renderer/roomify-2.0.css', import.meta.url), 'utf8');
+const stabilityStyles = readFileSync(new URL('../src/renderer/stability-2.0.css', import.meta.url), 'utf8');
 const standaloneStyles = readFileSync(new URL('../src/renderer/standalone-layout-1.5.5.css', import.meta.url), 'utf8');
+const legacyPrepare = readFileSync(new URL('./prepare-v160-runtime.mjs', import.meta.url), 'utf8');
 const openingService = readFileSync(new URL('../backend/app/services/openings.py', import.meta.url), 'utf8');
 const sharedPortalService = readFileSync(new URL('../backend/app/services/shared_portals.py', import.meta.url), 'utf8');
 const presentationService = readFileSync(new URL('../backend/app/services/presentation.py', import.meta.url), 'utf8');
 const presentationApi = readFileSync(new URL('../backend/app/presentation_api.py', import.meta.url), 'utf8');
+const presentationOrchestrator = readFileSync(new URL('../backend/app/services/rendering_v20.py', import.meta.url), 'utf8');
 const presentationRenderer = readFileSync(new URL('../backend/app/blender/generate_presentation.py', import.meta.url), 'utf8');
 
 function assert(condition, message) {
@@ -30,22 +33,38 @@ assert(packageJson.scripts['prepare:runtime'].includes('prepare-v200-runtime.mjs
 assert(app.includes('<span>Roomify Studio 2.0</span>'), 'The visible application release label must be Roomify Studio 2.0.');
 assert(app.includes("./components/PresentationStudio"), 'The Roomify presentation studio must be imported at runtime.');
 assert(app.includes('<PresentationStudio project={project} disabled={busy} />'), 'The dual-render studio must be visible in the main workspace.');
-assert(main.includes("./roomify-2.0.css"), 'The Roomify-inspired visual design stylesheet must load last.');
+assert(main.includes("./roomify-2.0.css"), 'The Roomify-inspired visual design stylesheet must load.');
+assert(main.includes("./stability-2.0.css"), 'The final 2.0 stability stylesheet must load after the visual theme.');
+assert(main.indexOf("./stability-2.0.css") > main.indexOf("./roomify-2.0.css"), 'Stability styles must load after Roomify styles.');
+assert(legacyPrepare.includes('hasNewerProductLabel'), 'The legacy runtime preparer must preserve newer branding.');
+assert(legacyPrepare.includes('hasCompatibleReleaseLabel'), 'The legacy runtime preparer must be safe on repeated 2.0 builds.');
 assert(api.includes('/presentation-renders'), 'The renderer API must expose dual presentation generation.');
 assert(presentationStudio.includes('Top-down layout'), 'Top-down render selection is missing.');
 assert(presentationStudio.includes('Eye-level interior'), 'Eye-level perspective render selection is missing.');
 assert(presentationStudio.includes('Download presentation ZIP'), 'Presentation bundle export is missing.');
 assert(presentationStudio.includes('Dining circulation'), 'Dining flow status is missing.');
+assert(presentationStudio.includes('runRevisionRef'), 'Presentation polling must reject stale jobs.');
+assert(presentationStudio.includes('setCompletedJob'), 'A failed retry must not discard the previous completed output.');
+assert(presentationStudio.includes('controlsLocked'), 'Presentation settings must lock while a render is starting or running.');
+assert(presentationStudio.includes('window.setTimeout'), 'Presentation polling must avoid overlapping interval requests.');
 assert((presentationConstants.match(/value: '/g) ?? []).length === 19, 'All 19 requested architectural styles must be selectable.');
 assert(presentationConstants.includes('Do not include source-plan text'), 'The geometry render prompt must explicitly remove source text.');
 assert(upload.includes('onDrop'), 'Floor-plan drag and drop is missing.');
 assert(upload.includes('uploadProgress'), 'Upload progress feedback is missing.');
+assert(upload.includes('uploadInFlight'), 'Uploads must suppress duplicate submissions.');
+assert(upload.includes('FLOORPLAN_EXTENSIONS'), 'Dropped floor plans must be validated before upload.');
+assert(stabilityStyles.includes('.upload-inline-error'), 'Inline upload errors must be visible.');
+assert(stabilityStyles.includes('.presentation-progress.failed'), 'Failed render status styling is missing.');
 assert(roomifyStyles.includes('--roomify-primary: #f97316'), 'Roomify orange design token is missing.');
 assert(roomifyStyles.includes('.presentation-render-frame'), 'Dual-render presentation stage styling is missing.');
 assert(presentationApi.includes('/presentation-renders'), 'Backend presentation route is missing.');
+assert(presentationApi.includes('_remove_failed_outputs'), 'Failed presentation files must be cleaned up.');
+assert(presentationApi.includes('temporary_archive.replace(archive)'), 'Presentation ZIP publication must be atomic.');
 assert(presentationService.includes('STYLE_PRESETS'), 'Style-aware material preparation is missing.');
 assert(presentationService.includes('_optimise_dining'), 'Dining-room flow optimisation is missing.');
 assert(presentationService.includes('source_text_excluded_from_render'), 'Text removal metadata is missing.');
+assert(presentationOrchestrator.includes('_validate_png'), 'Blender outputs must be validated before publication.');
+assert(presentationOrchestrator.includes('temporary_output.replace(output)'), 'Rendered PNG publication must be atomic.');
 assert(presentationRenderer.includes('PresentationTopDownCamera'), 'Orthographic top-down camera is missing.');
 assert(presentationRenderer.includes('PresentationEyeLevelCamera'), 'Eye-level interior camera is missing.');
 assert(presentationRenderer.includes('procedural_material'), 'Procedural PBR texture generation is missing.');
@@ -70,4 +89,4 @@ assert(runtimeStyles.includes('.walkthrough-active canvas'), 'First-person input
 assert(spawnStyles.includes('.walkthrough-spawn-controls'), 'First-person spawn control styling is missing.');
 assert(standaloneStyles.includes('contain: layout paint style'), 'Independent renderer paint containment is missing.');
 
-console.log('UI stability smoke test passed: Roomify Studio 2.0, 19 styles, dual photoreal presentation renders, text-free geometry, dining optimisation, drag-and-drop uploads, automatic project Python discovery, selectable spawning and stable portals.');
+console.log('UI stability smoke test passed: repeat-safe Roomify Studio 2.0 builds, guarded uploads, stale-job-safe polling, atomic render outputs, 19 styles, text-free geometry, dining optimisation, selectable spawning and stable portals.');
