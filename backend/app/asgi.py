@@ -2,12 +2,16 @@ from __future__ import annotations
 
 from typing import Any
 
+from fastapi import Request
+from fastapi.responses import JSONResponse
+
 from .config import APP_NAME
 from . import main as main_module
 from .architecture_api import router as architecture_router
 from .opening_api import router as opening_router
 from .interior_api import router as interior_router
 from .presentation_api import router as presentation_router
+from .storage import UploadStorageError
 from .services.rendering_v15 import blender_render as detailed_blender_render
 from .services.strict_geometry import (
     add_room_guarded,
@@ -32,6 +36,11 @@ def _has_route(path: str) -> bool:
 
 # Replace the legacy health route so development and packaged builds report the same release.
 app.router.routes = [route for route in app.routes if getattr(route, "path", None) != "/health"]
+
+
+@app.exception_handler(UploadStorageError)
+async def upload_storage_error(_request: Request, exc: UploadStorageError) -> JSONResponse:
+    return JSONResponse(status_code=exc.status_code, content={"detail": str(exc)})
 
 
 @app.get("/health")
