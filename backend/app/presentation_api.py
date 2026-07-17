@@ -3,6 +3,8 @@ from __future__ import annotations
 import hashlib
 import json
 import shutil
+import threading
+import uuid
 import zipfile
 from pathlib import Path
 from typing import Any, Literal
@@ -19,6 +21,7 @@ from .services.rendering_v20 import render_presentation_views
 
 router = APIRouter()
 PRESENTATION_JOB_KIND = "architectural_presentation"
+PRESENTATION_POINTER_LOCK = threading.Lock()
 
 
 class PresentationRenderRequest(BaseModel):
@@ -68,16 +71,41 @@ def _remove_failed_outputs(output_dir: Path, archive: Path, temporary_archive: P
     temporary_archive.unlink(missing_ok=True)
 
 
+def _load_json_object(path: Path) -> dict[str, Any] | None:
+    if not path.exists():
+        return None
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return None
+    return payload if isinstance(payload, dict) else None
+
+
+def _publish_latest_presentation(project_id: str, payload: dict[str, Any]) -> bool:
+    """Atomically publish only if this request is not older than the pointer."""
+    pointer = _latest_presentation_path(project_id)
+    pointer.parent.mkdir(parents=True, exist_ok=True)
+    requested_at = str(payload.get("requested_at") or "")
+    temporary = pointer.with_name(f".{pointer.name}.{uuid.uuid4().hex}.tmp")
+    with PRESENTATION_POINTER_LOCK:
+        existing = _load_json_object(pointer)
+        existing_requested_at = str(existing.get("requested_at") or "") if existing else ""
+        if existing_requested_at and requested_at and existing_requested_at > requested_at:
+            return False
+        try:
+            temporary.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+            temporary.replace(pointer)
+            return True
+        finally:
+            temporary.unlink(missing_ok=True)
+
+
 def _load_latest_presentation(project: Project) -> dict[str, Any] | None:
     pointer = _latest_presentation_path(project.id)
     if not pointer.exists() or project.scene is None:
         return None
-    try:
-        payload = json.loads(pointer.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError):
-        pointer.unlink(missing_ok=True)
-        return None
-    if not isinstance(payload, dict):
+    payload = _load_json_object(pointer)
+    if payload is None:
         pointer.unlink(missing_ok=True)
         return None
 
@@ -169,6 +197,7 @@ def create_presentation_renders(project_id: str, request: PresentationRenderRequ
             result_metadata = {
                 **metadata,
                 "job_id": job.id,
+                "requested_at": job.created_at,
                 "quality": request.quality,
                 "engine": request.engine,
                 "scene_fingerprint": started_scene_fingerprint,
@@ -190,7 +219,7 @@ def create_presentation_renders(project_id: str, request: PresentationRenderRequ
             if not temporary_archive.exists() or temporary_archive.stat().st_size < 128:
                 raise RuntimeError("Presentation archive was not created correctly")
             temporary_archive.replace(archive)
-            write_json(_latest_presentation_path(project_id), result_metadata)
+            result_metadata["published_as_latest"] = _publish_latest_presentation(project_id, result_metadata)
             return archive, archive_url, result_metadata
         except Exception:
             _remove_failed_outputs(output_dir, archive, temporary_archive)
