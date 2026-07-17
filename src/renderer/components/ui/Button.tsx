@@ -13,6 +13,7 @@ export function Button({
   fullWidth = false,
   className = '',
   children,
+  type = 'button',
   ...props
 }: ButtonProps) {
   const classes = [
@@ -23,7 +24,7 @@ export function Button({
     className,
   ].filter(Boolean).join(' ');
 
-  return <button className={classes} {...props}>{children}</button>;
+  return <button type={type} className={classes} {...props}>{children}</button>;
 }
 
 export default Button;
