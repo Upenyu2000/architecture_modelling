@@ -15,8 +15,12 @@ import kotlinx.coroutines.withContext
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.jsonPrimitive
 
 object SceneJsonCodec {
+    const val SUPPORTED_SCHEMA = "roomify.scene.v1"
+
     val json: Json = Json {
         prettyPrint = true
         encodeDefaults = true
@@ -24,9 +28,28 @@ object SceneJsonCodec {
         coerceInputValues = true
     }
 
-    fun encode(scene: SceneManifest): String = json.encodeToString(SceneGeometry.validate(scene))
+    fun encode(scene: SceneManifest): String = json.encodeToString(validateDocument(scene))
 
-    fun decode(value: String): SceneManifest = SceneGeometry.validate(json.decodeFromString<SceneManifest>(value))
+    fun decode(value: String): SceneManifest {
+        val root = json.parseToJsonElement(value)
+        require(root is JsonObject) { "The imported JSON must contain one scene object." }
+        val declaredSchema = root["schema_version"]?.jsonPrimitive?.content
+        require(declaredSchema == null || declaredSchema == SUPPORTED_SCHEMA) {
+            "Unsupported scene schema: ${declaredSchema ?: "unknown"}. This app supports $SUPPORTED_SCHEMA."
+        }
+        return validateDocument(json.decodeFromString<SceneManifest>(value))
+    }
+
+    private fun validateDocument(scene: SceneManifest): SceneManifest {
+        require(scene.schemaVersion == SUPPORTED_SCHEMA) { "Unsupported scene schema: ${scene.schemaVersion}." }
+        require(scene.projectId.isNotBlank() && scene.projectId.length <= 160) { "The scene project ID is invalid." }
+        require(scene.rooms.size <= 5_000) { "The JSON contains too many rooms for a mobile device." }
+        require(scene.walls.size <= 20_000) { "The JSON contains too many walls for a mobile device." }
+        require(scene.openings.size <= 10_000) { "The JSON contains too many openings for a mobile device." }
+        require(scene.fixturesAndFurniture.size <= 20_000) { "The JSON contains too many furniture objects for a mobile device." }
+        require(scene.assets.size <= 10_000) { "The JSON contains too many assets for a mobile device." }
+        return SceneGeometry.validate(scene)
+    }
 }
 
 class SceneJsonRepository(private val context: Context) {
