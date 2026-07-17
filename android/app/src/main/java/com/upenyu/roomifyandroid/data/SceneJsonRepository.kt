@@ -4,6 +4,7 @@ import android.content.Context
 import android.net.Uri
 import com.upenyu.roomifyandroid.model.SceneGeometry
 import com.upenyu.roomifyandroid.model.SceneManifest
+import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.FileOutputStream
 import java.nio.file.Files
@@ -19,10 +20,8 @@ object SceneJsonCodec {
     val json: Json = Json {
         prettyPrint = true
         encodeDefaults = true
-        explicitNulls = false
         ignoreUnknownKeys = true
         coerceInputValues = true
-        allowTrailingComma = true
     }
 
     fun encode(scene: SceneManifest): String = json.encodeToString(SceneGeometry.validate(scene))
@@ -47,7 +46,7 @@ class SceneJsonRepository(private val context: Context) {
     suspend fun importFrom(uri: Uri): SceneManifest = withContext(Dispatchers.IO) {
         val bytes = context.contentResolver.openInputStream(uri)?.use { stream ->
             val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
-            val output = java.io.ByteArrayOutputStream()
+            val output = ByteArrayOutputStream()
             var total = 0
             while (true) {
                 val read = stream.read(buffer)
@@ -58,8 +57,10 @@ class SceneJsonRepository(private val context: Context) {
             }
             output.toByteArray()
         } ?: error("Unable to open the selected JSON file.")
+        require(bytes.isNotEmpty()) { "The selected JSON file is empty." }
         val scene = SceneJsonCodec.decode(bytes.toString(Charsets.UTF_8))
-        saveCurrent(scene)
+        projectDir.mkdirs()
+        atomicWrite(sceneFile, SceneJsonCodec.encode(scene).toByteArray(Charsets.UTF_8))
         scene
     }
 
