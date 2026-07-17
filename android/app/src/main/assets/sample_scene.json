@@ -1,0 +1,58 @@
+{
+  "schema_version": "roomify.scene.v1",
+  "project_id": "android-sample",
+  "width_m": 12.0,
+  "depth_m": 8.0,
+  "wall_height_m": 2.8,
+  "walls": [
+    {"id":"w1","start":[0.0,0.0],"end":[12.0,0.0],"height":2.8,"thickness":0.18,"wall_type":"exterior","confidence":1.0},
+    {"id":"w2","start":[12.0,0.0],"end":[12.0,8.0],"height":2.8,"thickness":0.18,"wall_type":"exterior","confidence":1.0},
+    {"id":"w3","start":[12.0,8.0],"end":[0.0,8.0],"height":2.8,"thickness":0.18,"wall_type":"exterior","confidence":1.0},
+    {"id":"w4","start":[0.0,8.0],"end":[0.0,0.0],"height":2.8,"thickness":0.18,"wall_type":"exterior","confidence":1.0},
+    {"id":"w5","start":[5.0,0.0],"end":[5.0,8.0],"height":2.8,"thickness":0.16,"wall_type":"interior","confidence":1.0},
+    {"id":"w6","start":[5.0,4.0],"end":[12.0,4.0],"height":2.8,"thickness":0.16,"wall_type":"interior","confidence":1.0}
+  ],
+  "rooms": [
+    {"id":"room-1","name":"Living Room","polygon":[[0.0,0.0],[5.0,0.0],[5.0,8.0],[0.0,8.0]],"area_m2":40.0,"centroid":[2.5,4.0],"room_type":"living_room","width_m":5.0,"depth_m":8.0,"label_confidence":1.0},
+    {"id":"room-2","name":"Kitchen / Dining","polygon":[[5.0,0.0],[12.0,0.0],[12.0,4.0],[5.0,4.0]],"area_m2":28.0,"centroid":[8.5,2.0],"room_type":"dining_room","width_m":7.0,"depth_m":4.0,"label_confidence":1.0},
+    {"id":"room-3","name":"Bedroom","polygon":[[5.0,4.0],[12.0,4.0],[12.0,8.0],[5.0,8.0]],"area_m2":28.0,"centroid":[8.5,6.0],"room_type":"bedroom","width_m":7.0,"depth_m":4.0,"label_confidence":1.0}
+  ],
+  "assets": [],
+  "camera_path": [],
+  "openings": [
+    {"id":"door-1","opening_type":"door","position":[5.0,2.0],"width":0.9,"height":2.1,"rotation_deg":90.0,"wall_id":"w5","wall_ids":["w5"],"room_ids":["room-1","room-2"],"swing_direction":"clockwise","hinge_side":"left","interactive":true,"source":"manual","confidence":1.0},
+    {"id":"door-2","opening_type":"door","position":[8.5,4.0],"width":0.9,"height":2.1,"rotation_deg":0.0,"wall_id":"w6","wall_ids":["w6"],"room_ids":["room-2","room-3"],"swing_direction":"clockwise","hinge_side":"left","interactive":true,"source":"manual","confidence":1.0}
+  ],
+  "fixtures_and_furniture": [
+    {"id":"sofa-1","object_type":"sofa","asset_id":"sofa|modern|fabric|#66756D|","category":"furniture","room_id":"room-1","coordinates":[2.2,0.45,4.0],"rotation_deg":90.0,"scale":[1.0,1.0,1.0],"size":[2.2,0.9,0.95],"source":"user","confidence":1.0},
+    {"id":"table-1","object_type":"dining_table","asset_id":"dining_table|modern|oak|#B58A5A|","category":"furniture","room_id":"room-2","coordinates":[8.7,0.39,2.0],"rotation_deg":0.0,"scale":[1.0,1.0,1.0],"size":[1.9,0.78,1.0],"source":"user","confidence":1.0},
+    {"id":"bed-1","object_type":"bed","asset_id":"bed|modern|fabric|#A8AAA6|","category":"furniture","room_id":"room-3","coordinates":[8.8,0.36,6.1],"rotation_deg":0.0,"scale":[1.0,1.0,1.0],"size":[1.65,0.72,2.05],"source":"user","confidence":1.0}
+  ],
+  "materials": {
+    "palette_name":"Modern",
+    "floor_global":{"name":"Natural Oak","material_type":"wood","hex_color":"#B58A5A","roughness":0.42,"metallic":0.0,"specular":0.45,"texture_scale":1.0},
+    "walls_global":{"name":"Warm Architectural White","material_type":"plaster","hex_color":"#EEEAE2","roughness":0.76,"metallic":0.0,"specular":0.45,"texture_scale":1.0},
+    "exterior_walls":{"name":"Pale Concrete","material_type":"concrete","hex_color":"#A8AAA6","roughness":0.82,"metallic":0.0,"specular":0.45,"texture_scale":1.0},
+    "accent":{"name":"Charcoal Graphite","material_type":"paint","hex_color":"#32383A","roughness":0.38,"metallic":0.0,"specular":0.45,"texture_scale":1.0},
+    "fixture_metal":{"name":"Architectural Metal","material_type":"metal","hex_color":"#A5A7AA","roughness":0.24,"metallic":0.82,"specular":0.75,"texture_scale":1.0}
+  },
+  "project_metadata": {
+    "scale_ratio":"verified",
+    "detected_rooms":3,
+    "detected_openings":2,
+    "detected_objects":3,
+    "parser_version":"sample-1.0",
+    "source_plan_type":"json",
+    "structural_confidence":1.0,
+    "ocr_status":"not_required",
+    "extracted_labels":[]
+  },
+  "first_person_start":[2.5,1.62,4.0],
+  "collision_segments":[[[0.0,0.0],[12.0,0.0]],[[12.0,0.0],[12.0,8.0]],[[12.0,8.0],[0.0,8.0]],[[0.0,8.0],[0.0,0.0]],[[5.0,0.0],[5.0,8.0]],[[5.0,4.0],[12.0,4.0]]],
+  "ceiling_height_m":2.8,
+  "cutaway_height_m":1.65,
+  "wall_detection_mode":"verified",
+  "plan_type":"blueprint",
+  "layout_mode":"manual",
+  "warnings":[]
+}
